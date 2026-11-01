@@ -1,0 +1,27 @@
+# ESP-IDF
+firmware/build/
+firmware/sdkconfig
+firmware/managed_components/
+firmware/dependencies.lock
+
+# Swift
+mac/.build/
+mac/.swiftpm/
+
+# 出厂固件备份(刷机前自动生成,不要提交)
+flash-backup-*.bin
+
+# agent 微内核(Node 子包)
+agent/node_modules/
+agent/.runs/
+agent/.env
+agent/agent.json
+
+# macOS
+.DS_Store
+mac/build/
+firmware/tools/fonts/*.otf
+
+# ZCode/工作流本地状态(会话计划、任务暂存)
+.zcode/plans/
+.task-checks/

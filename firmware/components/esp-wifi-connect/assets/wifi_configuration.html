@@ -1,0 +1,427 @@
+<!doctype html>
+<!-- Yahamic 的 Wi-Fi 配网页:请求的接口与上游 78/esp-wifi-connect 的页面一致
+     (/scan、/saved/list、/saved/set_default、/saved/delete、/submit、
+     /advanced/config、/advanced/submit),样式与文案是 Yahamic 自己的。 -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Yahamic · Wi-Fi 设置</title>
+    <style>
+      :root {
+        --bg: #0b0d10;
+        --card: #14181d;
+        --line: #262c34;
+        --ink: #e8ebef;
+        --ink2: #9aa3ad;
+        --mute: #6b7480;
+        --accent: #37d29a;
+        --warn: #ffb02e;
+        --danger: #ff5d5d;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+        font: 400 15px/1.6 -apple-system, "PingFang SC", "Segoe UI", sans-serif;
+        display: grid;
+        place-items: center;
+        padding: 20px 14px;
+      }
+      main {
+        width: 100%;
+        max-width: 420px;
+      }
+      header {
+        text-align: center;
+        margin: 6px 0 18px;
+      }
+      header .dot {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--accent);
+        margin-right: 8px;
+        vertical-align: -1px;
+      }
+      header h1 {
+        display: inline;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      header p {
+        margin: 6px 0 0;
+        color: var(--mute);
+        font-size: 12px;
+      }
+      section {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 14px;
+      }
+      h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ink2);
+        letter-spacing: 0.08em;
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      li.network {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 8px;
+        border-bottom: 1px solid var(--line);
+        cursor: pointer;
+      }
+      li.network:last-child {
+        border-bottom: none;
+      }
+      li.network:active {
+        background: #1a2027;
+      }
+      li.network .name {
+        flex: 1;
+        overflow-wrap: anywhere;
+      }
+      li.network .rssi {
+        color: var(--mute);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
+      .note {
+        color: var(--mute);
+        font-size: 12px;
+        margin: 8px 2px 0;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        color: var(--ink2);
+        margin: 12px 0 4px;
+      }
+      input[type="text"],
+      input[type="password"] {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #0f1317;
+        color: var(--ink);
+        font-size: 15px;
+      }
+      input:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      button {
+        font: inherit;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .primary {
+        width: 100%;
+        margin-top: 14px;
+        padding: 12px;
+        background: var(--accent);
+        color: #06251a;
+        font-weight: 600;
+        font-size: 15px;
+      }
+      .primary:disabled {
+        opacity: 0.5;
+      }
+      .ghost {
+        background: none;
+        color: var(--ink2);
+        padding: 6px 10px;
+        font-size: 12px;
+        border: 1px solid var(--line);
+      }
+      .small {
+        padding: 4px 8px;
+        font-size: 11px;
+      }
+      .error {
+        color: var(--danger);
+        font-size: 13px;
+        margin: 10px 2px 0;
+        min-height: 1em;
+      }
+      details {
+        margin-top: 10px;
+      }
+      summary {
+        cursor: pointer;
+        color: var(--ink2);
+        font-size: 13px;
+      }
+      .saved-note {
+        color: var(--accent);
+        font-size: 12px;
+        margin: 6px 2px 0;
+      }
+      footer {
+        text-align: center;
+        color: var(--mute);
+        font-size: 11px;
+        margin: 16px 0 4px;
+      }
+      [hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1><span class="dot"></span>Yahamic</h1>
+        <p>无线麦克风 · Wi-Fi 设置</p>
+      </header>
+
+      <section>
+        <h2>附近的网络</h2>
+        <ul id="networks"></ul>
+        <p class="note" id="scan-note">正在搜索……</p>
+      </section>
+
+      <section>
+        <h2>加入网络</h2>
+        <form id="wifi">
+          <label for="ssid">网络名称</label>
+          <input type="text" id="ssid" autocomplete="off" spellcheck="false" />
+          <label for="password">密码</label>
+          <div class="row">
+            <input type="password" id="password" autocomplete="off" />
+            <button type="button" class="ghost" id="show">显示</button>
+          </div>
+          <p class="error" id="error"></p>
+          <button type="submit" class="primary" id="connect">连接</button>
+        </form>
+      </section>
+
+      <section id="saved-card" hidden>
+        <h2>已保存的网络</h2>
+        <ul id="saved"></ul>
+        <p class="note">按住列表第一项优先连接;「忘记」会删除记录。</p>
+      </section>
+
+      <section id="token-card" hidden>
+        <h2>配对码(可选)</h2>
+        <form id="token-form">
+          <label for="token"
+            >与 Mac 上 <code>yahamicd --token</code> 一致的配对码,留空则不校验</label
+          >
+          <div class="row">
+            <input type="text" id="token" autocomplete="off" spellcheck="false" />
+            <button type="submit" class="ghost" id="token-save">保存</button>
+            <button type="button" class="ghost" id="token-clear">清除</button>
+          </div>
+          <p class="saved-note" id="token-note"></p>
+          <p class="error" id="token-error"></p>
+        </form>
+        <details>
+          <summary>为什么要配对码?</summary>
+          <p class="note">
+            同一局域网里的其他人可以冒充你的 Mac 接收麦克风音频,或者向你的通话里注入音频。设置一个两边一致的配对码可以互相验证身份。
+          </p>
+        </details>
+      </section>
+
+      <footer>配对完成后,热点自动关闭,手机会回到原来的网络。</footer>
+    </main>
+
+    <script>
+      "use strict";
+      const $ = (id) => document.getElementById(id);
+
+      const bars = (rssi) =>
+        rssi >= -55 ? "▂▄▆█" : rssi >= -67 ? "▂▄▆" : rssi >= -80 ? "▂▄" : "▂";
+
+      function showNetworks(aps) {
+        const ul = $("networks");
+        ul.textContent = "";
+        aps.forEach((ap) => {
+          const li = document.createElement("li");
+          li.className = "network";
+          const name = document.createElement("span");
+          name.className = "name";
+          name.textContent = ap.ssid || "(未命名网络)";
+          const rssi = document.createElement("span");
+          rssi.className = "rssi";
+          rssi.textContent = (ap.rssi ?? "?") + " " + bars(ap.rssi ?? -100);
+          li.append(name, rssi);
+          li.addEventListener("click", () => {
+            $("ssid").value = ap.ssid || "";
+            $("password").focus();
+          });
+          ul.append(li);
+        });
+        $("scan-note").textContent = aps.length
+          ? "点击一个网络填入名称。"
+          : "还没搜到网络,稍等……";
+      }
+
+      async function scan() {
+        try {
+          const data = await (await fetch("/scan")).json();
+          showNetworks(Array.isArray(data.aps) ? data.aps : []);
+        } catch {
+          $("scan-note").textContent = "读不到网络列表,可直接在下方手动输入名称。";
+        }
+        setTimeout(scan, 6000);
+      }
+
+      async function loadSaved() {
+        let names = [];
+        let unreadable = false;
+        try {
+          names = await (await fetch("/saved/list")).json();
+        } catch {
+          unreadable = true;
+        }
+        const list = $("saved");
+        list.textContent = "";
+        $("saved-card").hidden =
+          !unreadable && (!Array.isArray(names) || names.length === 0);
+        if (unreadable || $("saved-card").hidden) return;
+        names.forEach((ssid, index) => {
+          const item = document.createElement("li");
+          item.className = "network";
+          const name = document.createElement("span");
+          name.className = "name";
+          name.textContent = ssid;
+          item.append(name);
+          if (index > 0) {
+            const top = document.createElement("button");
+            top.type = "button";
+            top.className = "ghost small";
+            top.textContent = "置顶";
+            top.addEventListener("click", () =>
+              savedAction("/saved/set_default", index)
+            );
+            item.append(top);
+          }
+          const forget = document.createElement("button");
+          forget.type = "button";
+          forget.className = "ghost small";
+          forget.textContent = "忘记";
+          forget.addEventListener("click", () =>
+            savedAction("/saved/delete", index)
+          );
+          item.append(forget);
+          list.append(item);
+        });
+      }
+
+      async function savedAction(path, index) {
+        for (const b of $("saved").querySelectorAll("button")) b.disabled = true;
+        let failed = false;
+        try {
+          await fetch(path + "?index=" + index);
+        } catch {
+          failed = true;
+        }
+        await loadSaved();
+        if (failed) alert("操作失败,请重试。");
+      }
+
+      $("show").addEventListener("click", () => {
+        const shown = $("password").type === "text";
+        $("password").type = shown ? "password" : "text";
+        $("show").textContent = shown ? "显示" : "隐藏";
+      });
+
+      $("wifi").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const ssid = $("ssid").value;
+        if (!ssid.trim()) return;
+        $("error").textContent = "";
+        $("connect").disabled = true;
+        $("connect").textContent = "正在连接 " + ssid + "……";
+        try {
+          const response = await fetch("/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ssid, password: $("password").value }),
+          });
+          const data = await response.json();
+          if (!data.success) throw new Error(data.error || "");
+          location.href = "/done.html?ssid=" + encodeURIComponent(ssid);
+        } catch (error) {
+          $("connect").disabled = false;
+          $("connect").textContent = "连接";
+          $("error").textContent =
+            "加入 " +
+            ssid +
+            " 失败。请检查密码,并确认是 2.4 GHz 网络。";
+        }
+      });
+
+      // 配对码:借道组件现成的 ota_url 存储(固件按配对码读取)。
+      async function loadToken() {
+        try {
+          const data = await (await fetch("/advanced/config")).json();
+          $("token-card").hidden = data.show_ota_config === false;
+          $("token").value = data.ota_url || "";
+          $("token-note").textContent = data.ota_url
+            ? "已保存配对码。"
+            : "未设置:设备与 Mac 互相不做校验。";
+        } catch {
+          // 没有这一项页面也照常工作。
+        }
+      }
+
+      async function saveToken(value) {
+        $("token-error").textContent = "";
+        $("token-save").disabled = true;
+        try {
+          const response = await fetch("/advanced/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ota_url: value }),
+          });
+          const data = await response.json();
+          if (!data.success) throw new Error(data.error || "");
+          $("token").value = value;
+          $("token-note").textContent = value
+            ? "已保存配对码。"
+            : "已清除:不做校验。";
+        } catch {
+          $("token-error").textContent = "没有保存成功,请重试。";
+        } finally {
+          $("token-save").disabled = false;
+        }
+      }
+
+      $("token-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        saveToken($("token").value.trim());
+      });
+      $("token-clear").addEventListener("click", () => saveToken(""));
+
+      scan();
+      loadSaved();
+      loadToken();
+    </script>
+  </body>
+</html>

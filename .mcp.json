@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "yahamic-agent": {
+      "command": "node",
+      "args": ["agent/mcp-server.mjs"],
+      "timeout": 300000
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "yahamic-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Coding-agent microkernel for yahamic: static graph + probabilistic decision points + blackboard",
+  "bin": {
+    "yaha-agent": "./bin/yaha-agent.mjs"
+  },
+  "scripts": {
+    "start": "node bin/yaha-agent.mjs",
+    "test": "node --test",
+    "doctor": "node bin/yaha-agent.mjs doctor",
+    "demo": "node bin/yaha-agent.mjs demo",
+    "mcp": "node mcp-server.mjs"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "^3.25.76"
+  }
+}
