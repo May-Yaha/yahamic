@@ -1,0 +1,8 @@
+{
+  "name": "yahamic-agent-plugin",
+  "description": "yahamic 的 coding agent 微内核：静态图 + 概率决策点 + 黑板。通过 MCP 工具驱动 召回→规划→路由→执行→验证→沉淀 的编码工作流。",
+  "version": "0.1.0",
+  "author": {
+    "name": "yaha"
+  }
+}

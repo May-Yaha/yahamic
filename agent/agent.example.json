@@ -1,0 +1,51 @@
+{
+  "workspace": "..",
+  "llm": {
+    "endpoint": "https://open.bigmodel.cn/api/coding/paas/v4",
+    "model": "glm-5.3",
+    "apiKeyEnv": "ZHIPU_API_KEY",
+    "thinking": "low",
+    "maxOutputTokens": 32768,
+    "timeoutMs": 180000
+  },
+  "router": {
+    "provider": "glm",
+    "jev": {
+      "endpoint": "https://api.typesafe.ai/v1/systemone",
+      "model": "jev-1.13.0",
+      "apiKeyEnv": "TYPESAFE_API_KEY",
+      "timeoutMs": 15000
+    }
+  },
+  "codex": {
+    "command": "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+    "model": null,
+    "proxyUrl": "http://127.0.0.1:7890",
+    "planningTimeoutMs": 600000,
+    "executionTimeoutMs": 3600000
+  },
+  "pi": {
+    "command": "../yahaagent/node_modules/.bin/pi",
+    "_comment": "相对路径相对 agent/ 目录解析;复用 yahaagent 已安装的 Pi 0.87.1",
+    "glm": { "provider": "zai-coding-cn", "model": "glm-5.3", "apiKeyEnv": "ZAI_CODING_CN_API_KEY", "timeoutMs": 1800000 },
+    "kimi": { "provider": "kimi-coding", "model": "k3", "apiKeyEnv": "KIMI_API_KEY", "timeoutMs": 1800000 }
+  },
+  "verify": {
+    "commands": [
+      { "command": "swift", "args": ["build"], "cwd": "mac", "timeoutMs": 600000 }
+    ]
+  },
+  "wiki": {
+    "repository": "../yahallmwiki",
+    "queries": [],
+    "maxQueries": 4,
+    "maxPages": 3,
+    "maxContextChars": 8000,
+    "timeoutMs": 15000
+  },
+  "limits": {
+    "maxTasks": 8,
+    "maxAttemptsPerTask": 2,
+    "maxCodexExecutions": 1
+  }
+}

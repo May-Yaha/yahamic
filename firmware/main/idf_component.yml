@@ -1,0 +1,18 @@
+dependencies:
+  idf: ">=6.1"
+  # 这块板的屏幕驱动,与 XiaoZhi v2.5.2 / OpenCharm 相同(触摸不用,未引)。
+  espressif/esp_lcd_co5300: "^2.1.0"
+  # Wi-Fi 配网(热点 + 配网页)同 XiaoZhi v2.5.2;我们的副本在 components/,页面是中文的。
+  78/esp-wifi-connect:
+    version: "~3.3.1"
+    override_path: "../components/esp-wifi-connect"
+  # 在局域网里找 Mac 上的 yahamicd(_yahamic._tcp),同 OpenCharm 找 charmd 的方式。
+  espressif/mdns: "^1.8.0"
+  # ES7210 麦克风编解码器驱动(音频走 PCM 直传,不需要 esp-sr/Opus)。
+  espressif/esp_codec_dev: "~1.6.2"
+  # Opus 编码(同 xiaozhi-esp32):32 kbps 语音,带宽从裸 PCM 的 256 kbps 降到 32 kbps。
+  espressif/esp_audio_codec: "~2.5.0"
+  # LVGL 9.2 UI 栈:esp_lvgl_port 接管 CO5300 flush(后续步骤启用),并公开传递
+  # lvgl 头文件,main 组件 REQUIRES 只需写 esp_lvgl_port。
+  lvgl/lvgl: "~9.2.0"
+  espressif/esp_lvgl_port: "~2.6.3"  # 2.7+ 需 LVGL 9.3 API;2.6.3 兼容 IDF 6.1 + LVGL 9.2

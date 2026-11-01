@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 示例:让 yahamicd 开机常驻(登录后自动启动)。
+     安装:  cp mac/com.yaha.yahamicd.plist ~/Library/LaunchAgents/
+            launchctl load ~/Library/LaunchAgents/com.yaha.yahamicd.plist
+     卸载:  launchctl unload ~/Library/LaunchAgents/com.yaha.yahamicd.plist
+     记得把 ProgramArguments 里的路径改成你机器上 yahamicd 的绝对路径,
+     并按需加上 <string>--token</string><string>你的配对码</string>。 -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.yaha.yahamicd</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/yahamicd</string>
+    <string>--verbose</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/yahamicd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/yahamicd.log</string>
+</dict>
+</plist>

@@ -1,0 +1,91 @@
+<!doctype html>
+<!-- Yahamic 的 Wi-Fi 配网完成页:提示后请求关闭热点并加入网络
+     (POST /exit,与上游页面的做法一致)。 -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Yahamic · 已连接</title>
+    <style>
+      :root {
+        --bg: #0b0d10;
+        --card: #14181d;
+        --line: #262c34;
+        --ink: #e8ebef;
+        --mute: #6b7480;
+        --accent: #37d29a;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+        font: 400 15px/1.6 -apple-system, "PingFang SC", "Segoe UI", sans-serif;
+        display: grid;
+        place-items: center;
+        padding: 20px 14px;
+      }
+      main {
+        width: 100%;
+        max-width: 380px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 26px 20px;
+        text-align: center;
+      }
+      .dot {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 14px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #06251a;
+        display: grid;
+        place-items: center;
+        font-size: 28px;
+        font-weight: 700;
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 19px;
+      }
+      p {
+        margin: 0 0 6px;
+        color: var(--mute);
+        font-size: 13px;
+      }
+      .hint {
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+      }
+      code {
+        color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="dot" aria-hidden="true">✓</div>
+      <h1>正在加入 Wi-Fi</h1>
+      <p id="line">设备马上连接网络,然后自动寻找你的 Mac。</p>
+      <div class="hint">
+        <p>
+          热点即将关闭,手机会回到原来的网络。<br />
+          连上后设备屏幕显示 <code>ON AIR</code> 即可开始使用。
+        </p>
+      </div>
+    </main>
+    <script>
+      "use strict";
+      const ssid = new URLSearchParams(location.search).get("ssid");
+      if (ssid)
+        document.getElementById("line").textContent =
+          "设备正在加入 " + ssid + "。";
+      setTimeout(() => {
+        fetch("/exit", { method: "POST" }).catch(() => {});
+      }, 1500);
+    </script>
+  </body>
+</html>
