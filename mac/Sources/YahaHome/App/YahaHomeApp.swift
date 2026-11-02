@@ -13,9 +13,20 @@ struct YahaHomeApp: App {
             MenuPanelView()
                 .environmentObject(model)
         } label: {
-            Image(systemName: model.menuSymbol)
+            Image(nsImage: menuIcon(model.menuSymbol, red: model.isLive))
         }
         .menuBarExtraStyle(.window)
+    }
+
+    /// 顶栏图标默认按模板图渲染(无视颜色);送声时换成非模板的红色图标。
+    private func menuIcon(_ name: String, red: Bool) -> NSImage {
+        let base = NSImage(systemSymbolName: name, accessibilityDescription: "Yaha 家居") ?? NSImage()
+        guard red, let colored = base.withSymbolConfiguration(.init(paletteColors: [.systemRed])) else {
+            base.isTemplate = true
+            return base
+        }
+        colored.isTemplate = false
+        return colored
     }
 }
 

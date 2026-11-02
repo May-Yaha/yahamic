@@ -89,7 +89,7 @@ struct MenuPanelView: View {
                         .fixedSize()
                     }
                     Spacer(minLength: 0)
-                    Text("HHKB 选右侧键").font(.caption2).foregroundStyle(.tertiary)
+                    Text("HHKB 的 Fn 收不到").font(.caption2).foregroundStyle(.tertiary)
                 }
                 .controlTile()
                 .transition(.opacity.combined(with: .move(edge: .top)))

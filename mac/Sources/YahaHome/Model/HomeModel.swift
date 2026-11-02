@@ -34,7 +34,7 @@ final class HomeModel: ObservableObject {
             if started { applyPushToTalk() }
         }
     }
-    /// 按住讲话的键。HHKB 的 Fn 不上报 macOS,选右侧修饰键。
+    /// 按住讲话的键。HHKB 的 Fn 不上报 macOS,改选一颗修饰键。
     @Published var talkKey: TalkKey {
         didSet {
             defaults.set(talkKey.rawValue, forKey: "talkKey")
@@ -83,6 +83,10 @@ final class HomeModel: ObservableObject {
         guard mic.isOnline else { return "mic.slash" }
         return mic.state.muted ? "mic.slash.fill" : "mic.fill"
     }
+    /// 正在送声(顶栏图标标红)。
+    var isLive: Bool { mic.isOnline && !mic.state.muted }
+
+    let overlay = TalkOverlay()
 
     private init() {
         pttEnabled = defaults.object(forKey: "ptt") as? Bool ?? true
@@ -297,6 +301,9 @@ final class HomeModel: ObservableObject {
         link.onState = { [weak self] state in
             DispatchQueue.main.async { self?.linkStateChanged(state) }
         }
+        link.onLevel = { [weak self] db in
+            DispatchQueue.main.async { self?.overlay.push(level: db) }
+        }
         uplink = link
         link.start()
         startDashboardReporter()
@@ -304,6 +311,7 @@ final class HomeModel: ObservableObject {
 
     private func linkStateChanged(_ state: Uplink.State) {
         mic.state = state
+        overlay.linkChanged(online: state.connected, muted: state.muted)
         // 压测遥测:设备在线时每 10 秒记一行流指标。
         guard state.connected, Date().timeIntervalSince(lastMetricAt) > 10 else { return }
         lastMetricAt = Date()
@@ -381,8 +389,10 @@ final class HomeModel: ObservableObject {
             let name = talkKey.title
             if let listener = FnListener(key: talkKey, onChange: { [weak self] down in
                 DispatchQueue.main.async {
-                    self?.uplink?.sendControl(muted: !down)
-                    self?.log(down ? "\(name) 按下 → 送声" : "\(name) 松开 → 静音")
+                    guard let self else { return }
+                    self.overlay.setKey(down, online: self.mic.isOnline, muted: self.mic.state.muted)
+                    self.uplink?.sendControl(muted: !down)
+                    self.log(down ? "\(name) 按下 → 送声" : "\(name) 松开 → 静音")
                 }
             }) {
                 // 此处 fn 必为 nil(上面的 else if 守卫),旧实例已在丢弃前 stop。
