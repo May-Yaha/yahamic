@@ -64,13 +64,16 @@ public enum ListenPermission: String, Equatable, CaseIterable {
     }
 }
 
-/// 按住讲话的键。HHKB 等键盘的 Fn 在键盘固件里处理,macOS 收不到,得换成右侧修饰键。
+/// 按住讲话的键。HHKB 等键盘的 Fn 在键盘固件里处理,macOS 收不到,得换成修饰键。
 public enum TalkKey: String, CaseIterable, Sendable {
-    case fn, rightOption, rightCommand, rightControl
+    case fn, leftCommand, leftOption, leftControl, rightOption, rightCommand, rightControl
 
     public var title: String {
         switch self {
         case .fn: return "Fn"
+        case .leftCommand: return "左 Command"
+        case .leftOption: return "左 Option"
+        case .leftControl: return "左 Control"
         case .rightOption: return "右 Option"
         case .rightCommand: return "右 Command"
         case .rightControl: return "右 Control"
@@ -80,6 +83,9 @@ public enum TalkKey: String, CaseIterable, Sendable {
     var keyCode: Int {
         switch self {
         case .fn: return 63
+        case .leftCommand: return 55
+        case .leftOption: return 58
+        case .leftControl: return 59
         case .rightOption: return 61
         case .rightCommand: return 54
         case .rightControl: return 62
@@ -90,6 +96,9 @@ public enum TalkKey: String, CaseIterable, Sendable {
     var deviceMask: UInt64 {
         switch self {
         case .fn: return CGEventFlags.maskSecondaryFn.rawValue
+        case .leftCommand: return 0x08
+        case .leftOption: return 0x20
+        case .leftControl: return 0x01
         case .rightOption: return 0x40
         case .rightCommand: return 0x10
         case .rightControl: return 0x2000
@@ -98,7 +107,7 @@ public enum TalkKey: String, CaseIterable, Sendable {
 }
 
 // 全局讲话键监听(push-to-talk):按住 = 讲话,松开 = 静音。下面说的 Fn 路径只对 .fn 适用;
-// 右侧修饰键只走 flagsChanged:键码对上且设备位置位 = 按下。
+// 修饰键只走 flagsChanged:键码对上且设备位置位 = 按下。
 //
 // macOS 上 Fn 有两种上报路径,不同系统版本可能只用其一,也可能并存:
 //   A) flagsChanged:Fn 修饰位翻转。即 CoreGraphics 的
@@ -218,6 +227,11 @@ public final class FnListener {
             if self.key == .fn && key == 63 {
                 keycodeFnDown = type == .keyDown
                 updateCombined()
+            } else if self.key != .fn, type == .keyDown, fnFlagSet {
+                // 讲话键按着又按了别的键 = 快捷键(Cmd+C 之类),不是讲话:当作松开,
+                // 直到讲话键真正抬起再按才重新算。
+                fnFlagSet = false
+                updateCombined()
             }
             return
         }
@@ -232,9 +246,6 @@ public final class FnListener {
         let fn = event.flags.rawValue & self.key.deviceMask != 0
         guard fn != fnFlagSet else { return }
         fnFlagSet = fn
-        var names: [String] = ["Fn=\(fn)"]
-        if event.flags.contains(.maskCommand) { names.append("Cmd") }
-        if event.flags.contains(.maskShift) { names.append("Shift") }
         updateCombined()
     }
 }

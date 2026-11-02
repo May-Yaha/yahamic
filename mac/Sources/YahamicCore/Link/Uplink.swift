@@ -62,6 +62,11 @@ public final class Uplink: NSObject {
         get { queue.sync { tapHandler } }
         set { queue.sync { tapHandler = newValue } }
     }
+    /// 每帧电平(dBFS,约 16 Hz),给讲话浮层画电平条;在内部串行队列上回调。
+    public var onLevel: ((Double) -> Void)? {
+        get { queue.sync { levelHandler } }
+        set { queue.sync { levelHandler = newValue } }
+    }
     /// 音频出口(可选):只用来同步「流活跃」标记,让断供计数只在真实送声期间累计。
     public var audioSink: AudioSink? {
         get { queue.sync { sink } }
@@ -76,6 +81,7 @@ public final class Uplink: NSObject {
     private var stateHandler: ((State) -> Void)?
     private var logHandler: ((String) -> Void)?
     private var tapHandler: ((Data) -> Void)?
+    private var levelHandler: ((Double) -> Void)?
     private weak var sink: AudioSink?
     private var ptt: Bool
 
@@ -317,6 +323,7 @@ public final class Uplink: NSObject {
         diag.enqueuedFrames += 1
         let rms = (sumSq / Double(n)).squareRoot()
         levelDb = 20 * log10(max(rms / 32768, 1e-6))
+        levelHandler?(levelDb)
     }
 
     // MARK: - 连接管理
