@@ -82,12 +82,10 @@ constexpr uint16_t kTrack = 0x18E3; // 响度条的槽色(暗),兼作底部分�
 constexpr int kBarY = 320;
 constexpr int kBarH = 20;
 
-// 频谱:只在 Live(按住 Fn 送声)屏上。LVGL 迁移后渲染由 lv_chart 承担
-// (创建于 board_screen.cpp,几何 kSpectrumY0/Y1 = 旧 kSpecY0/kSpecY1):默认
-// LINE 模式 240 点 × 3 series 包络线(青 0x07FF/蓝 0x8637/紫粉 0xFB56,流速与
-// 空间周期由频谱重心驱动、相位连续),CONFIG_YAHAMIC_SPECTRUM_BARS 时为
-// COLUMN 模式 32 柱(弹簧动画)。kSpecBars 是频带数:重心加权、包络载波采样
-// 与柱值都用它。
+// 频谱:只在 Live(按住讲话键送声)屏上,对象创建于 board_screen.cpp:默认
+// 24 根居中对称电平条(弹簧动画,CONFIG_YAHAMIC_SPECTRUM_BARS);WAVES 时为
+// 64 点 × 3 条包络线画布(流速与空间周期由频谱重心驱动、相位连续)。
+// kSpecBars 是频带数:重心加权、包络载波采样与条值都用它。
 constexpr int kSpecBars = 32;
 
 // —— 频谱重心(音高指标)的常量 ——
@@ -122,6 +120,17 @@ int64_t flush_seg_t0 = 0;
 
 void flush_timing_cb(lv_event_t* e) {
   switch (lv_event_get_code(e)) {
+    case LV_EVENT_INVALIDATE_AREA: {
+      // CO5300 的窗口要"起偶止奇"(同 blit 与 OpenCharm 的 round_area):LVGL 局部
+      // 重绘的脏区坐标任意,奇数起点会让面板把整块写偏——真机表现为文字闪烁
+      // 错位、电平条/时钟更新后画面错开。截图走整屏无效化,所以截不出来。
+      auto* a = static_cast<lv_area_t*>(lv_event_get_param(e));
+      a->x1 &= ~1;
+      a->y1 &= ~1;
+      a->x2 |= 1;
+      a->y2 |= 1;
+      break;
+    }
     case LV_EVENT_FLUSH_START:
       // 截图回帧采集:FLUSH_START 时 LVGL 已把本分块渲染进 draw buffer,而
       // esp_lvgl_port 的 flush_cb 还没做字节交换——此刻是原生 RGB565,正好是旧
@@ -464,37 +473,53 @@ WaveDynamics wave_dynamics(float dt) {
 }
 #endif  // !CONFIG_YAHAMIC_SPECTRUM_BARS
 
-// —— Live 频谱(lv_chart)数值层:与渲染解耦的动力学计算 ——
-// LVGL 迁移后,像素级的画线/画柱全部交给 lv_chart 的软件渲染;本层保留旧
+// —— Live 频谱数值层:与渲染解耦的动力学计算 ——
+// 像素级的画线/画条全部交给 LVGL 的软件渲染;本层保留旧
 // 实现的数值内核:32 频带非对称平滑(bands_s)、总电平快攻慢放(level_s)、
 // 弹簧柱动力学(pos/vel)与相位连续的流速/空间周期动力学(wave_dynamics,
-// 由频谱重心驱动)。每帧由这些状态算出 series 目标值写进 int32 数组(经
-// lv_chart_set_ext_y_array 零拷贝挂给 chart,见 draw_spectrum),热路径不再
+// 由频谱重心驱动)。每帧由这些状态算出目标值写进 int32 数组(见
+// draw_spectrum),热路径不再
 // 逐像素算颜色,也没有堆分配(全部静态存储)。
 int32_t spec_values[screens::kSpectrumSeriesN][screens::kSpectrumPoints];
 int32_t spec_values_prev[screens::kSpectrumSeriesN][screens::kSpectrumPoints];
 #if CONFIG_YAHAMIC_SPECTRUM_BARS
-bool spec_attached = false;  // ext 数组已挂载到 chart(LINE 模式走画布,不挂载)
-#endif
-
-#if CONFIG_YAHAMIC_SPECTRUM_BARS
-// COLUMN 数值层:每柱一个弹簧(逐帧步进,参数与旧 draw_bars 一致:刚度 0.32 /
-// 阻尼 0.70,带一点过冲回弹,比纯衰减更"活");输出 0..1000 的柱高(chart
-// y 轴 range 0..1000)。下限 30:无声也露一小截"呼吸点"(对齐旧手绘语义)。
+// 电平条数值层:左右镜像,中间是低频、往两边频率升高(人声能量集中在低频,
+// 条形中间高两边低,像 Mac 端讲话浮层)。半边 12 根各取相邻两个频带的最大值,
+// 覆盖频带 0..23(约 50 Hz..3 kHz,人声主要能量区)。每根一个弹簧(刚度 0.32 /
+// 阻尼 0.70,带一点过冲回弹);输出 0..1000。
 void compute_column_values(const float* in, int count) {
-  static float pos[kSpecBars] = {0};
-  static float vel[kSpecBars] = {0};
-  const int bars = count < kSpecBars ? count : kSpecBars;
-  for (int b = 0; b < kSpecBars; ++b) {
-    float target = b < bars ? in[b] : 0.0f;
+  constexpr int kHalf = screens::kSpectrumPoints / 2;
+  static float pos[kHalf] = {0};
+  static float vel[kHalf] = {0};
+  // 每根条的底噪基线:麦克风增益下房间底噪本身就在 -72..-12 dB 窗口的上半段
+  // (真机:无人讲话时 24 根全满),所以条高显示"高出底噪多少"。基线跌得快、
+  // 涨得慢(约 15 秒),讲话撑不起来;静音时窗口清零(值恰为 0)不更新基线,
+  // 否则开麦后要 15 秒才重新学到底噪。
+  static float floor_v[kHalf];
+  static bool floor_ready = false;
+  if (!floor_ready) {
+    for (float& f : floor_v) f = 1;
+    floor_ready = true;
+  }
+  for (int d = 0; d < kHalf; ++d) {
+    float raw = 0;
+    int n = 0;
+    for (int b = 2 * d; b < 2 * d + 2 && b < count; ++b, ++n) raw += in[b];
+    raw = n ? raw / n : 0;
+    if (raw > 0) floor_v[d] += (raw - floor_v[d]) * (raw < floor_v[d] ? 0.2f : 0.002f);
+    // 语音一般高出底噪 20–30 dB ≈ 窗口的 0.33–0.5;留 0.05 死区压住底噪抖动。
+    // ponytail: 增益/死区是真机拍的,换麦或改 kMicGainDb 要重调。
+    float target = (raw - floor_v[d] - 0.05f) / 0.4f;
     if (target < 0) target = 0;
     if (target > 1) target = 1;
-    vel[b] += (target - pos[b]) * 0.32f;  // 弹簧刚度
-    vel[b] *= 0.70f;                      // 阻尼:小过冲,很快安定
-    pos[b] += vel[b];
-    if (pos[b] < 0) pos[b] = 0;
-    if (pos[b] > 1) pos[b] = 1;
-    spec_values[0][b] = 30 + int32_t(pos[b] * 970.0f);
+    vel[d] += (target - pos[d]) * 0.32f;  // 弹簧刚度
+    vel[d] *= 0.70f;                      // 阻尼:小过冲,很快安定
+    pos[d] += vel[d];
+    if (pos[d] < 0) pos[d] = 0;
+    if (pos[d] > 1) pos[d] = 1;
+    const int32_t v = int32_t(pos[d] * 1000.0f);
+    spec_values[0][kHalf - 1 - d] = v;  // 左半:中心往左
+    spec_values[0][kHalf + d] = v;      // 右半:中心往右
   }
 }
 #else
@@ -642,19 +667,12 @@ const Centroid& centroid() { return centroid_state; }
 void draw_spectrum(const float* in, int count) {
   update_centroid(in, count);   // 重心门限/平滑,保留现实现(见上)
   spectrum_frames += 1;         // 遥测:每次调用计一帧(语义同旧:渲染帧计数)
-#if CONFIG_YAHAMIC_SPECTRUM_BARS
-  lv_obj_t* target = screens::spectrum_chart();
-#else
+#if !CONFIG_YAHAMIC_SPECTRUM_BARS
   lv_obj_t* target = screens::spectrum_canvas();
+  if (!target) return;
 #endif
-  if (!target || !lvgl_port_lock(0)) return;  // 持锁下更新数据并同步渲染
+  if (!lvgl_port_lock(0)) return;  // 持锁下更新数据并同步渲染
 #if CONFIG_YAHAMIC_SPECTRUM_BARS
-  if (!spec_attached) {
-    // 数值数组零拷贝挂载:LVGL 渲染直接读这块静态内存,每帧只写不分配。
-    for (int s = 0; s < screens::kSpectrumSeriesN; ++s)
-      lv_chart_set_ext_y_array(target, screens::spectrum_series(s), spec_values[s]);
-    spec_attached = true;
-  }
   compute_column_values(in, count);
 #else
   compute_line_values(in, count);
@@ -671,7 +689,7 @@ void draw_spectrum(const float* in, int count) {
   memcpy(spec_values_prev, spec_values, sizeof spec_values);
   int64_t t0 = 0;  // 帧耗时起点:BARS 在 refr 前取,LINE 从画线开始取(画线是大头)
 #if CONFIG_YAHAMIC_SPECTRUM_BARS
-  lv_chart_refresh(target);  // 单次无效化(chart 全区 480×340)
+  screens::set_bars(spec_values[0]);  // 只动高度变了的条,LVGL 只重画它们的区域
   t0 = esp_timer_get_time();
 #else
   // 画布路径(why 见 board_screen.h spectrum_canvas):清底 + 三条折线各

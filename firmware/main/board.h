@@ -7,9 +7,9 @@
 #include "esp_lcd_types.h"
 
 // 板级支持(Waveshare ESP32-S3-Touch-AMOLED-2.16,与 OpenCharm 相同的参考板):
-// I2C 总线、CO5300 屏幕、板上按键(GPIO18)。屏幕不引 LVGL:静态状态用自带
-// 5x7 点阵字体直接画(绿 = ON AIR,红 = MUTED,蓝 = 正在找 Mac,橙 = 蓝牙
-// 配对码),Live 时叠加频谱律动图(见 draw_spectrum)。引脚与初始化序列同
+// I2C 总线、CO5300 屏幕、板上按键(GPIO18)。屏幕由 LVGL 渲染(board_screen.cpp):
+// 状态屏是「彩色圆点 + 标题」(红 = 讲话中,灰 = 已静音,蓝 = 寻找 Mac,橙 = 蓝牙
+// 配对码),Live 时叠加电平条与计时(见 draw_spectrum)。引脚与初始化序列同
 // OpenCharm 的 firmware/device/main/board.cpp(源自 Waveshare 原理图与
 // xiaozhi-esp32)。
 namespace board {
@@ -24,7 +24,7 @@ struct Board {
 struct Screen {
   enum class State { Boot, Pairing, Searching, Live, Muted, Dashboard };
   State state = State::Boot;
-  std::string line1;  // 大字:状态名(ON AIR、MUTED、…)
+  std::string line1;  // 大字:状态名(#on_air_s、#muted、PAIR…)
   std::string line2;  // 中字:副标题、提示
   std::string line3;  // 中字第二行
   float level = 0;    // 响度条,0..1(当前固件未用:Live 屏电平由波形振幅表现)
