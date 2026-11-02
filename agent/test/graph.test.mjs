@@ -191,3 +191,62 @@ test('writing an undeclared namespace fails the node', async () => {
   const outcome = await runGraph({ graph, registry, blackboard });
   assert.equal(outcome.status, 'blocked');
 });
+
+test('when predicates compose with all/any; empty or malformed lists are rejected', async () => {
+  const registry = registryWith(
+    echoPlugin('a', async () => ({ outputs: {} })),
+    echoPlugin('b', async () => ({ outputs: { plan: { ok: true, done: false } } })),
+  );
+  const outcomeOf = (when) => baseDef({ outcome: { when, then: 'completed', otherwise: 'blocked', otherwiseReason: 'no' } });
+  const pred = (p, equals) => ({ ns: 'plan', path: [p], equals });
+  assert.throws(() => loadGraph(outcomeOf({ all: [] }), registry), /outcome/);
+  assert.throws(() => loadGraph(outcomeOf({ any: [{ ns: 'ghost', path: ['x'], equals: 1 }] }), registry), /outcome/);
+  const run = async (when) => {
+    const graph = loadGraph(outcomeOf(when), registry);
+    return (await runGraph({ graph, registry, blackboard: createBlackboard({ run: { id: 'w', graph: 'test', task: 't' }, counters: graph.counters }) })).status;
+  };
+  assert.equal(await run({ all: [pred('ok', true), pred('done', true)] }), 'blocked');
+  assert.equal(await run({ any: [pred('ok', true), pred('done', true)] }), 'completed');
+  assert.equal(await run({ all: [pred('ok', true), { any: [pred('done', false), pred('done', true)] }] }), 'completed');
+});
+
+test('a throwing plugin factory is a node failure: onError fallback still applies', async () => {
+  const registry = registryWith(echoPlugin('ok', async () => ({ outputs: {} })));
+  registry.register('broken', () => { throw Object.assign(new Error('factory boom'), { code: 'FACTORY' }); });
+  const def = baseDef({ nodes: [
+    { id: 'src', type: 'source', plugin: 'broken', outputs: ['data'], onError: 'fallback' },
+    { id: 'dec', type: 'decision', plugin: 'ok', inputs: ['data'], outputs: ['plan'] },
+    { id: 'act', type: 'action', plugin: 'ok', inputs: ['plan'], outputs: ['work'] },
+    { id: 'sink', type: 'sink', plugin: 'ok', inputs: ['work'] },
+  ] });
+  const graph = loadGraph(def, registry);
+  const outcome = await runGraph({ graph, registry, blackboard: createBlackboard({ run: { id: 'f', graph: 'test', task: 't' }, counters: graph.counters }) });
+  assert.equal(outcome.status, 'completed');
+});
+
+test('parallel cancel waits for every sibling to settle before returning interrupted', async () => {
+  const controller = new AbortController();
+  let slowFinished = false;
+  const registry = registryWith(
+    echoPlugin('a', async () => ({ outputs: {} })),
+    echoPlugin('fast', (ctx) => new Promise((_, reject) => {
+      ctx.signal.addEventListener('abort', () => reject(Object.assign(new Error('cancelled'), { code: 'PROCESS_CANCELLED' })), { once: true });
+    })),
+    echoPlugin('slow', (ctx) => new Promise((_, reject) => {
+      ctx.signal.addEventListener('abort', () => setTimeout(() => { slowFinished = true; reject(Object.assign(new Error('late'), { code: 'PROCESS_CANCELLED' })); }, 60), { once: true });
+    })),
+  );
+  const def = baseDef({
+    nodes: [
+      { id: 'one', type: 'source', plugin: 'fast', outputs: ['data'] },
+      { id: 'two', type: 'source', plugin: 'slow', outputs: ['more'] },
+      { id: 'dec', type: 'decision', plugin: 'a', inputs: ['data', 'more'], outputs: ['plan'] },
+    ],
+    edges: [{ from: 'one', to: 'dec' }, { from: 'two', to: 'dec' }],
+  });
+  const graph = loadGraph(def, registry);
+  const promise = runGraph({ graph, registry, blackboard: createBlackboard({ run: { id: 'p', graph: 'test', task: 't' }, counters: graph.counters }), signal: controller.signal, concurrency: 2 });
+  setTimeout(() => controller.abort(), 20);
+  assert.equal((await promise).status, 'interrupted');
+  assert.equal(slowFinished, true);
+});

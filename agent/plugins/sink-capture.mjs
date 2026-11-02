@@ -6,10 +6,14 @@
 import { redact } from '../kernel/config.mjs';
 import { connectWiki } from './wiki-client.mjs';
 
-const SECRETS = () => [
-  process.env.ZHIPU_API_KEY, process.env.ZAI_CODING_CN_API_KEY,
-  process.env.KIMI_API_KEY, process.env.TYPESAFE_API_KEY,
-].filter(Boolean);
+// 默认名单 + 配置里实际使用的 apiKeyEnv（改了变量名也照样脱敏）。
+const SECRETS = (config) => {
+  const names = new Set(['ZHIPU_API_KEY', 'ZAI_CODING_CN_API_KEY', 'KIMI_API_KEY', 'TYPESAFE_API_KEY']);
+  for (const section of [config?.llm, config?.router?.jev, ...Object.values(config?.pi ?? {})]) {
+    if (typeof section?.apiKeyEnv === 'string' && section.apiKeyEnv) names.add(section.apiKeyEnv);
+  }
+  return [...names].map(name => process.env[name]).filter(Boolean);
+};
 
 export function createSinkCapture(params) {
   const connect = params.connect ?? ((config, options) => connectWiki(config, options));
@@ -41,7 +45,7 @@ export function createSinkCapture(params) {
           stateHome: wikiConfig.stateHome,
           timeoutMs: wikiConfig.timeoutMs ?? 15000,
         }, { signal });
-        const content = SECRETS().reduce((value, secret) => redact(value, secret), JSON.stringify(digest, null, 2));
+        const content = SECRETS(config).reduce((value, secret) => redact(value, secret), JSON.stringify(digest, null, 2));
         const result = await client.capture({
           title: `yahamic-agent ${run.id}：${(plan?.summary ?? run.task).slice(0, 60)}`,
           content,

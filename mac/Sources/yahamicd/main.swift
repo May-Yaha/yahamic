@@ -1,6 +1,7 @@
 import Foundation
 import os
 import YahamicCore
+import YahamicProtocol
 
 // 权限诊断日志通道:统一日志系统里 subsystem 过滤可见(启动状态、状态转换)。
 let fnPermLog = Logger(subsystem: "com.yaha.yahamicd", category: "fn-permission")
@@ -8,11 +9,11 @@ let fnPermLog = Logger(subsystem: "com.yaha.yahamicd", category: "fn-permission"
 setvbuf(stdout, nil, _IOLBF, 0)  // launchd 下 stdout 不是终端,强制行缓冲
 
 // yahamicd:Mac mini 端的无线麦克风接收守护进程。
-//   yahamicd [--port 7717] [--token 配对码] [--device BlackHole]
+//   yahamicd --token 配对码 [--port 7717] [--device BlackHole]
 //           [--jitter-ms 60] [--list-devices] [--verbose]
 
 var port: UInt16 = 7717
-var token: String?
+var token = ""
 var deviceNeedle = "BlackHole"
 var jitterMs = 60
 var verbose = false
@@ -43,7 +44,7 @@ while !args.isEmpty {
 
         用法: yahamicd [选项]
           --port <N>        UDP 端口与广播端口(默认 7717)
-          --token <配对码>   与设备配网页里一致的配对码(建议设置)
+          --token <配对码>   必填:与设备配网页里一致的配对码(8~63 位)
           --device <名称>   虚拟麦克风设备名(默认含 "BlackHole" 的第一个)
           --jitter-ms <N>   抖动缓冲目标毫秒数(默认 60,越小越低延迟)
           --no-ptt          关闭「按住 Fn 讲话」(默认开启:设备平时静音)
@@ -55,6 +56,11 @@ while !args.isEmpty {
         print("未知参数:\(arg)(--help 看用法)")
         exit(2)
     }
+}
+
+if !listDevices, !(SessionCrypto.minCodeLength...SessionCrypto.maxCodeLength).contains(token.count) {
+    print("必须用 --token 指定配对码(\(SessionCrypto.minCodeLength)~\(SessionCrypto.maxCodeLength) 位,与设备配网页一致)。--help 看用法")
+    exit(2)
 }
 
 if listDevices {
@@ -71,9 +77,11 @@ guard let device = findOutputDevice(named: deviceNeedle) else {
     找不到输出设备「\(deviceNeedle)」。
 
     yahamicd 把设备音频写进虚拟麦克风的输出侧,应用再选它当输入。最常用的
-    虚拟麦克风是 BlackHole,安装:
+    虚拟麦克风是 BlackHole,安装(二选一):
 
-        brew install blackhole-2ch
+        brew install blackhole-2ch && sudo killall coreaudiod
+        curl -fLo /tmp/BlackHole2ch.pkg https://existential.audio/downloads/BlackHole2ch-0.7.1.pkg \\
+          && sudo installer -pkg /tmp/BlackHole2ch.pkg -target / && sudo killall coreaudiod
 
     装好后用 --list-devices 查看,或用 --device 指定其它环回设备。
     """)
@@ -90,7 +98,7 @@ print("""
 yahamicd 已启动
   虚拟麦克风: \(sink.deviceName)(\(Int(sink.sampleRate)) Hz)
   抖动缓冲:   \(jitterMs) ms
-  配对码:     \(token ?? "未设置(局域网信任模式,建议用 --token)")
+  配对码:     已设置(\(token.count) 位,协议 v2 鉴权 + 加密)
 设备开机后会自动找到这台 Mac。Ctrl-C 退出。
 """)
 
@@ -100,7 +108,7 @@ signal(SIGINT, SIG_IGN)
 signal(SIGTERM, SIG_IGN)
 var signalSources: [DispatchSourceSignal] = []  // 必须持有,否则 source 被释放即取消
 
-let uplink = Uplink(port: port, token: token, jitter: jitter, verbose: verbose,
+let uplink = Uplink(port: port, code: token, jitter: jitter, verbose: verbose,
                     pushToTalk: pushToTalk)
 uplink.audioSink = sink  // 接线:断供事件计数需要「流活跃」标记
 

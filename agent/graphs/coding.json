@@ -2,16 +2,20 @@
   "id": "coding",
   "counters": {
     "rework": { "max": 2 },
-    "llm-calls": { "max": 40 }
+    "llm-calls": { "max": 40 },
+    "codex-calls": { "max": 8 }
   },
   "limits": {
     "wallClockMs": 7200000
   },
   "outcome": {
-    "when": { "ns": "verify", "path": ["allPassed"], "equals": true },
+    "when": { "all": [
+      { "ns": "verify", "path": ["allPassed"], "equals": true },
+      { "ns": "execution", "path": ["allCompleted"], "equals": true }
+    ] },
     "then": "completed",
     "otherwise": "blocked",
-    "otherwiseReason": "验证未通过，且返工预算（rework）已耗尽或没有可换的执行者。"
+    "otherwiseReason": "验证未通过或有任务执行失败，且返工预算（rework）已耗尽或没有可换的执行者。"
   },
   "nodes": [
     {
@@ -86,6 +90,9 @@
     { "from": "execute", "to": "verify" },
     { "from": "verify", "to": "capture" },
     { "from": "verify", "to": "report" },
-    { "from": "verify", "to": "route", "backedge": true, "guard": { "counter": "rework", "max": 2, "when": { "ns": "verify", "path": ["allPassed"], "equals": false } } }
+    { "from": "verify", "to": "route", "backedge": true, "guard": { "counter": "rework", "max": 2, "when": { "any": [
+      { "ns": "verify", "path": ["allPassed"], "equals": false },
+      { "ns": "execution", "path": ["allCompleted"], "equals": false }
+    ] } } }
   ]
 }

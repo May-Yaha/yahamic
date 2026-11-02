@@ -6,8 +6,8 @@
 // 流速/空间周期驱动、逐带"渲染→DMA 传屏"都在 board 侧;音频走采集线程直发
 // (60 ms 一帧 Opus,FFT 也在那里),网络握手走 uplink 的 worker 任务。
 // 按键:短按 = 硬件静音/取消静音(静音时 codec 关闭,一比特都不出设备);
-// 长按 5 秒 = 打开 Wi-Fi 配网热点。Mac 键盘的 Fn 键(按住讲话)走同一条静音
-// 路径(uplink::on_remote_mute)。
+// 长按 5 秒 = 打开 Wi-Fi 配网热点。Mac 键盘的 Fn 键(按住讲话)与断链自动静音
+// 走同一条静音路径(mic::set_muted)。开机默认静音。
 #include <atomic>
 #include <string>
 
@@ -19,6 +19,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "mic_state.h"
 #include "uplink.h"
 #include "nvs_flash.h"
 #include "power.h"
@@ -74,6 +75,10 @@ board::Screen compose(const uplink::Snapshot& s, const power::Reading& battery,
     screen.line1 = "#setup";
     screen.line2 = std::string("#hotspot ") + s.setup_ssid;
     screen.line3 = std::string("#password ") + s.setup_pass;
+  } else if (s.unpaired) {  // 没有有效配对码:不连 Mac,只能去配网页填码
+    screen.state = board::Screen::State::NoWifi;
+    screen.line1 = "PAIRING CODE?";
+    screen.line2 = "#hold_setup";
   } else if (!s.wifi_up) {
     if (s.joining) {  // 配过网,正在连或重试:不是没配过
       screen.state = board::Screen::State::Joining;
@@ -146,15 +151,16 @@ extern "C" void app_main() {
   audio::set_sink([](const uint8_t* opus, size_t size, uint32_t ts_ms, float) {
     uplink::send_audio(opus, size, ts_ms, 0);
   });
+  mic::set_muted(true);  // 开机静音:上线后由 Mac 的静音指令决定开不开麦
   audio::start();
   xTaskCreatePinnedToCore(battery_task, "yahamic_batt", 3072, nullptr, 2, nullptr, 0);
-  uplink::start(version);
-  // Mac 键盘 Fn(按住讲话)遥控静音:与板上按键同一条路径,屏幕同步变化。
+  // Mac 键盘 Fn(按住讲话)遥控静音 / 断链自动静音:与板上按键同一条路径,屏幕同步变化。
+  // 先注册再 start:worker 一起来就可能回调。
   uplink::on_remote_mute([](bool muted) {
-    audio::set_muted(muted);
-    uplink::set_muted(muted);
-    ESP_LOGI(kTag, "mac fn key: %s", muted ? "muted (capture off)" : "live");
+    mic::set_muted(muted);
+    ESP_LOGI(kTag, "mac: %s", muted ? "muted (capture off)" : "live");
   });
+  uplink::start(version);
 
   bool key = false;
   bool key_raw = false;
@@ -183,10 +189,8 @@ extern "C" void app_main() {
         key_down_at = now;
         hold_fired = false;
       } else if (!hold_fired && now - key_down_at < kPressMs) {
-        bool muted = !uplink::muted();
-        audio::set_muted(muted);
-        uplink::set_muted(muted);
-        ESP_LOGI(kTag, "key: %s", muted ? "muted (capture off)" : "unmuted");
+        mic::toggle();
+        ESP_LOGI(kTag, "key: %s", uplink::muted() ? "muted (capture off)" : "unmuted");
       }
     }
     if (key && !hold_fired && now - key_down_at >= kHoldSetupMs) {
@@ -196,7 +200,7 @@ extern "C" void app_main() {
     }
 
     uplink::Snapshot s = uplink::snapshot();
-    if (now >= next_status) {
+    if (int32_t(now - next_status) >= 0) {
       next_status = now + kStatusEveryMs;
       battery.percent = battery_percent.load();
       battery.usb = battery_usb.load();
@@ -227,7 +231,7 @@ extern "C" void app_main() {
       if (screen.state == board::Screen::State::Dashboard) next_dash_tick = now + kDashboardTickMs;
     } else if (board_dump) {
       board::draw(screen);  // 内容没变也要重画一次:截图回传在 draw 里
-    } else if (screen.state == board::Screen::State::Dashboard && now >= next_dash_tick) {
+    } else if (screen.state == board::Screen::State::Dashboard && int32_t(now - next_dash_tick) >= 0) {
       next_dash_tick = now + kDashboardTickMs;
       board::draw_dashboard();  // 指纹不变也要按 ~1Hz 重绘:大字时钟秒级走针
     }
@@ -237,7 +241,7 @@ extern "C" void app_main() {
       if (audio::spectrum(bars, kSpecBars)) board::draw_spectrum(bars, kSpecBars);
     }
 
-    if (now >= next_log) {
+    if (int32_t(now - next_log) >= 0) {
       next_log = now + kLogEveryMs;
       static uint32_t last_frames = 0;
       uint32_t frames = board::spectrum_frame_count();

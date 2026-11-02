@@ -169,9 +169,12 @@ void update_spectrum() {
     for (int i = 0; i < kFftN; ++i) hann[i] = 0.5f * (1 - std::cos(2 * float(M_PI) * i / (kFftN - 1)));
     hann_ready = true;
   }
-  for (int i = 0; i < kFftN; ++i) {
-    re[i] = float(window[i]) * hann[i];
-    im[i] = 0;
+  {
+    std::lock_guard<std::mutex> guard(bars_lock);  // set_muted 会在别的线程清窗
+    for (int i = 0; i < kFftN; ++i) {
+      re[i] = float(window[i]) * hann[i];
+      im[i] = 0;
+    }
   }
   fft(re, im, kFftN);
   float power[kFftN / 2];
@@ -245,8 +248,11 @@ void capture_loop(void*) {
       // 滑窗前移一帧再追加,频谱跟着音频帧更新(60 ms 一帧 ≈ 16.7 Hz);
       // 屏幕波形的 24-30 fps 目标(实测 24.3-24.8)由主循环渲染节奏决定,与采集帧率解耦,
       // 帧间平滑/重心/相位连续动力学在 board 侧,60 ms 台阶在那里被抹平。
-      memmove(window, window + kFrameSamples, (kFftN - kFrameSamples) * sizeof(int16_t));
-      memcpy(window + kFftN - kFrameSamples, frame, kFrameSamples * sizeof(int16_t));
+      {
+        std::lock_guard<std::mutex> guard(bars_lock);
+        memmove(window, window + kFrameSamples, (kFftN - kFrameSamples) * sizeof(int16_t));
+        memcpy(window + kFftN - kFrameSamples, frame, kFrameSamples * sizeof(int16_t));
+      }
       update_spectrum();
       // Opus 编码后交 sink(带宽 256kbps→32kbps,时戳让 Mac 端正确排序)。
       if (opus_encoder && sink) {
@@ -288,8 +294,9 @@ bool init(i2c_master_bus_handle_t bus) {
     return false;
   }
   // 32 KB 内部栈:去掉 AEC 后内部 RAM 充裕;PSRAM 栈在 Core 1 上引发过
-  // LoadProhibited(缓存一致性问题),内部栈无此忧。采集固定在 Core 1,与
-  // 跑主循环/渲染的 Core 0 核隔离,互不抢时间片。
+  // LoadProhibited(缓存一致性问题),内部栈无此忧。采集固定在 Core 1(与主循环
+  // 同核,sdkconfig 的 MAIN_TASK_AFFINITY_CPU1),优先级 6 高于主循环,每 60 ms
+  // 抢占一次;Core 0 留给 Wi-Fi 与 LVGL。
   if (xTaskCreatePinnedToCore(capture_loop, "yahamic_mic", 32768, nullptr, 6, &task, 1) != pdPASS) {
     ESP_LOGE(kTag, "capture task didn't start");
     return false;
@@ -309,8 +316,8 @@ void set_muted(bool on) {
   if (on) {
     if (!was) fade_left.store(kMuteFadeFrames + 1);  // +1 = 首个淡出帧仍满幅
     // 静音即无信号:清窗、清柱,屏幕上的频谱自然落零。
-    memset(window, 0, sizeof window);
     std::lock_guard<std::mutex> guard(bars_lock);
+    memset(window, 0, sizeof window);
     memset(bars, 0, sizeof bars);
   } else {
     fade_left.store(0);

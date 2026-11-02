@@ -160,6 +160,13 @@ public final class FnListener {
     }
 
     /// 并集状态翻转时才通知外部,天然去抖:两路径并存不会双触发。
+    /// tap 被禁用期间的 Fn 抬起会丢:按系统当前修饰键状态重置,免得卡在「按住」。
+    fileprivate func resyncAfterTapDisabled() {
+        keycodeFnDown = false
+        fnFlagSet = CGEventSource.flagsState(.combinedSessionState).contains(.maskSecondaryFn)
+        updateCombined()
+    }
+
     private func updateCombined() {
         let down = keycodeFnDown || fnFlagSet
         guard down != lastDown else { return }
@@ -201,6 +208,7 @@ private func fnTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGE
     // 系统在事件处理超时/用户输入时会禁用 tap:重新打开,否则此后再也收不到。
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
         if let tap = listener.tap { CGEvent.tapEnable(tap: tap, enable: true) }
+        listener.resyncAfterTapDisabled()
         return Unmanaged.passUnretained(event)
     }
     listener.handle(event, type: type)

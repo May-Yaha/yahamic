@@ -1,5 +1,5 @@
 idf_component_register(
-  SRCS main.cpp board.cpp board_screen.cpp audio.cpp power.cpp uplink.cpp
+  SRCS main.cpp board.cpp board_screen.cpp audio.cpp power.cpp uplink.cpp protocol.cpp mic_state.cpp
        generated/fonts/font_zh_title.c generated/fonts/font_zh_sub.c
        generated/fonts/font_clock_num.c
   INCLUDE_DIRS .

@@ -3,7 +3,7 @@ import IOKit
 
 // MetricsCollector:Mac 端系统/外设指标采集器,供 YahamicCore 的仪表盘上报链路
 // 以 2~5s(建议 3s)的周期按需调用 sample(),结果通过 type 7 帧下发到设备屏。
-// (尚未接线:Uplink.sendDashboard 已就绪但暂无调用方,等待 dashboard 任务收尾)
+// (已接线:HomeModel 与 yahamicd 每 3s 采样一次,经 Uplink.sendDashboard 下发)
 // 只依赖系统框架(Foundation/IOKit),Package.swift 不需要新增依赖。
 
 /// 一次采样的结果快照。电量取值 0~100,255 为「未知」哨兵:
@@ -81,10 +81,10 @@ public final class MetricsCollector: @unchecked Sendable {
         info.withMemoryRebound(to: integer_t.self, capacity: Int(infoCount)) { ptr in
             var i = 0
             while i + Int(CPU_STATE_IDLE) < Int(infoCount) {
-                let user = UInt64(bitPattern: Int64(ptr[i + Int(CPU_STATE_USER)]))
-                let system = UInt64(bitPattern: Int64(ptr[i + Int(CPU_STATE_SYSTEM)]))
-                let idle = UInt64(bitPattern: Int64(ptr[i + Int(CPU_STATE_IDLE)]))
-                let nice = UInt64(bitPattern: Int64(ptr[i + Int(CPU_STATE_NICE)]))
+                let user = UInt64(UInt32(bitPattern: ptr[i + Int(CPU_STATE_USER)]))
+                let system = UInt64(UInt32(bitPattern: ptr[i + Int(CPU_STATE_SYSTEM)]))
+                let idle = UInt64(UInt32(bitPattern: ptr[i + Int(CPU_STATE_IDLE)]))
+                let nice = UInt64(UInt32(bitPattern: ptr[i + Int(CPU_STATE_NICE)]))
                 busy += user + system
                 total += user + system + idle + nice
                 i += stride

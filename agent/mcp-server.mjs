@@ -8,8 +8,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { loadDotEnv, loadConfig, RUNS_DIR } from './kernel/config.mjs';
-import { loadGraphFile, listGraphs } from './runtime.mjs';
-import { createRun } from './kernel/run.mjs';
+import { loadGraphFile, listGraphs, acquireRunLock } from './runtime.mjs';
+import { createRun, isRunId } from './kernel/run.mjs';
 import { createAgentRegistry, createDemoRegistry } from './plugins/index.mjs';
 
 export function createAgentServer({ registry = createAgentRegistry(), runsDir = RUNS_DIR } = {}) {
@@ -33,7 +33,7 @@ export function createAgentServer({ registry = createAgentRegistry(), runsDir = 
     },
   }, async ({ task, graph, demo, waitMs }) => {
     if (inFlight) {
-      return { isError: true, content: [{ type: 'text', text: `已有运行进行中:${inFlight};请先轮询其完成。` }] };
+      return { isError: true, content: [{ type: 'text', text: `已有运行进行中:${inFlight.runId ?? inFlight.status};请先轮询其完成。` }] };
     }
     loadDotEnv();
     let config;
@@ -43,6 +43,13 @@ export function createAgentServer({ registry = createAgentRegistry(), runsDir = 
       return { isError: true, content: [{ type: 'text', text: `配置错误:${error.message}` }] };
     }
     const activeRegistry = demo ? createDemoRegistry() : registry;
+    let release;
+    try {
+      // Cross-process: a CLI `run` (or another MCP host) may hold the workspace.
+      release = acquireRunLock(runsDir);
+    } catch (error) {
+      return { isError: true, content: [{ type: 'text', text: `无法启动运行:${error.message}` }] };
+    }
     const controller = new AbortController();
     const entry = { runId: null, status: 'starting', controller };
     inFlight = entry;
@@ -62,8 +69,9 @@ export function createAgentServer({ registry = createAgentRegistry(), runsDir = 
       }).catch(error => {
         entry.status = 'blocked';
         entry.error = error instanceof Error ? error.message : String(error);
-      }).finally(() => { if (inFlight === entry) inFlight = null; });
+      }).finally(() => { release(); if (inFlight === entry) inFlight = null; });
     } catch (error) {
+      release();
       inFlight = null;
       return { isError: true, content: [{ type: 'text', text: `无法启动运行:${error.message}` }] };
     }
@@ -96,6 +104,18 @@ export function createAgentServer({ registry = createAgentRegistry(), runsDir = 
     };
   });
 
+  server.registerTool('yaha_agent_cancel', {
+    description: '取消当前进行中的运行(中止子进程组,终态 interrupted)。',
+    inputSchema: {},
+  }, async () => {
+    if (!inFlight) return { isError: true, content: [{ type: 'text', text: '没有进行中的运行。' }] };
+    inFlight.controller.abort();
+    return { content: [{ type: 'text', text: JSON.stringify({ cancelled: true, runId: inFlight.runId }) }] };
+  });
+
+  // Host went away (stdio closed): nobody can poll the result, so stop working.
+  server.server.onclose = () => inFlight?.controller.abort();
+
   server.registerTool('yaha_agent_run_status', {
     description: '查询运行状态;输入 runId 可查看事件摘要,latest 查看当前/最近运行。',
     inputSchema: { runId: z.string().optional(), latest: z.boolean().optional() },
@@ -104,11 +124,12 @@ export function createAgentServer({ registry = createAgentRegistry(), runsDir = 
     if (!id && latest) {
       if (inFlight) id = inFlight.runId;
       if (!id) {
-        const entries = fs.existsSync(runsDir) ? fs.readdirSync(runsDir).sort() : [];
+        const entries = fs.existsSync(runsDir) ? fs.readdirSync(runsDir).filter(isRunId).sort() : [];
         id = entries[entries.length - 1] ?? null;
       }
     }
     if (!id) return { isError: true, content: [{ type: 'text', text: '缺少 runId,且没有历史运行。' }] };
+    if (!isRunId(id)) return { isError: true, content: [{ type: 'text', text: `runId 格式无效:${id}` }] };
     const reportFile = path.join(runsDir, id, 'report.json');
     if (fs.existsSync(reportFile)) {
       const report = JSON.parse(fs.readFileSync(reportFile, 'utf8'));
@@ -126,12 +147,13 @@ export function createAgentServer({ registry = createAgentRegistry(), runsDir = 
     description: '读取某次运行的黑板(全部 facts 或指定命名空间,如 plan/assignments/execution/verify/report)。',
     inputSchema: { runId: z.string(), ns: z.string().optional() },
   }, async ({ runId, ns }) => {
+    if (!isRunId(runId)) return { isError: true, content: [{ type: 'text', text: `runId 格式无效:${runId}` }] };
     for (const file of ['blackboard.json', 'report.json']) {
       const candidate = path.join(runsDir, runId, file);
       if (!fs.existsSync(candidate)) continue;
       const payload = JSON.parse(fs.readFileSync(candidate, 'utf8'));
       const facts = payload.facts ?? {};
-      if (ns && !(ns in facts)) {
+      if (ns && !Object.hasOwn(facts, ns)) {
         return { isError: true, content: [{ type: 'text', text: `命名空间不存在:${ns}(可用:${Object.keys(facts).join(', ') || '无'})` }] };
       }
       return { content: [{ type: 'text', text: JSON.stringify(ns ? facts[ns] : facts, null, 2) }] };
@@ -145,6 +167,8 @@ export function createAgentServer({ registry = createAgentRegistry(), runsDir = 
 export async function serve() {
   const { server } = createAgentServer();
   const transport = new StdioServerTransport();
+  // Turn host signals into a normal exit so process.mjs's exit hook kills child groups.
+  for (const [name, code] of [['SIGINT', 130], ['SIGTERM', 143]]) process.once(name, () => process.exit(code));
   await server.connect(transport);
 }
 

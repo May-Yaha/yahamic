@@ -54,7 +54,9 @@ export function createBlackboard({ run, counters = {}, journalLimit = JOURNAL_LI
     // Snapshot writes are synchronous (tmp+rename): an interrupt at any point
     // must leave the last completed node visible on disk.
     if (onPersist) {
-      try { onPersist(snapshot()); } catch { /* A failed checkpoint must not kill the run. */ }
+      // A failed checkpoint must not kill the run; it is journaled instead and
+      // reaches disk with the next successful persist.
+      try { onPersist(snapshot()); } catch (error) { journal({ node: null, event: 'persist_failed', code: error?.code ?? null }); }
     }
   }
 

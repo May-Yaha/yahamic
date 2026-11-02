@@ -76,3 +76,62 @@ test('demo registry runs the same graph fully offline', async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('verify passing is not enough: failed executors keep the backedge open, then block', async () => {
+  const failingCoder = {
+    async execute({ read }) {
+      const previous = read('execution')?.history ?? [];
+      const results = read('assignments').assignments.map(a => ({ taskId: a.taskId, worker: a.worker, status: 'failed', summary: 'boom' }));
+      return { outputs: { execution: { results, usage: [], history: [...previous, ...results], allCompleted: false } } };
+    },
+  };
+  const registry = createOverrideRegistry(
+    createDemoRegistry(),
+    { coder: failingCoder, verifier: fixtureVerifier({ failRounds: 0 }) },
+  );
+  const graph = loadGraphFile('coding', registry);
+  const dir = await mkdtemp(path.join(tmpdir(), 'yaha-agent-e2e-'));
+  try {
+    const run = createRun({ graph, registry, config: { workspace: dir, limits: { maxTasks: 8, maxAttemptsPerTask: 2, maxCodexExecutions: 1 } }, task: 'executor failure', runDir: dir });
+    const report = await run.start();
+    assert.equal(report.status, 'blocked');
+    assert.equal(report.counters.rework, 2, 'allCompleted=false drove the rework backedge');
+    assert.equal(report.facts.execution.history.length, 3, 'history is append-only across rounds');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('wallClockMs aborts in-flight plugins through the run signal and settles blocked', async () => {
+  const { loadGraph } = await import('../kernel/graph.mjs');
+  const { createRegistry } = await import('../kernel/plugins.mjs');
+  const registry = createRegistry();
+  registry.register('wait', () => ({
+    execute: ({ signal }) => new Promise((_, reject) => {
+      signal.addEventListener('abort', () => reject(Object.assign(new Error('cancelled'), { code: 'PROCESS_CANCELLED' })), { once: true });
+    }),
+  }));
+  const graph = loadGraph({ id: 'slow', limits: { wallClockMs: 30 }, nodes: [{ id: 'w', type: 'source', plugin: 'wait', outputs: ['data'] }], edges: [] }, registry);
+  const started = Date.now();
+  const report = await createRun({ graph, registry, config: {}, task: 'budget' }).start();
+  assert.equal(report.status, 'blocked');
+  assert.match(report.reason, /Wall-clock budget of 30 ms/);
+  assert.ok(Date.now() - started < 2000, 'the plugin was interrupted, not awaited to completion');
+});
+
+test('snapshot write failure is journaled and leaves no tmp file behind', async () => {
+  const registry = createDemoRegistry();
+  const graph = loadGraphFile('coding', registry);
+  const dir = await mkdtemp(path.join(tmpdir(), 'yaha-agent-e2e-'));
+  try {
+    const run = createRun({ graph, registry, config: { workspace: dir, limits: { maxTasks: 8, maxAttemptsPerTask: 2, maxCodexExecutions: 1 } }, task: 'persist failure', runDir: dir });
+    // blackboard.json is a non-empty directory: every rename onto it fails.
+    fs.mkdirSync(path.join(dir, run.id, 'blackboard.json', 'x'), { recursive: true });
+    const report = await run.start();
+    assert.equal(report.status, 'completed', 'a failed checkpoint never kills the run');
+    assert.ok(run.blackboard.snapshot().journal.some(entry => entry.event === 'persist_failed'));
+    assert.deepEqual(fs.readdirSync(path.join(dir, run.id)).filter(name => name.includes('.tmp-')), []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

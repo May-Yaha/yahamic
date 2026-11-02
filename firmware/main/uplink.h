@@ -7,9 +7,9 @@
 #include "sdkconfig.h"
 
 // 链路层:Wi-Fi 接入(esp-wifi-connect,配网页见 components/esp-wifi-connect)、
-// 在局域网里用 mDNS 找到 Mac 上的 yahamicd(_yahamic._tcp),然后走 UDP:
-// 60 ms 一帧的 Opus 编码音频(16 kHz 单声道)直传,外加 hello/welcome 握手、
-// 静音状态与保活。
+// 在局域网里用 mDNS 找到 Mac 上的 yahamicd(_yahamic._tcp),然后走 UDP 协议 v2:
+// 配对码双向验证的握手,之后 60 ms 一帧的 Opus 音频(16 kHz 单声道)、静音状态
+// 与保活全部加密(报文与密码学见 protocol.h)。
 // 全双工只走一个 UDP socket,设备侧无需任何 JSON 依赖(报文是"键 值"行)。
 namespace uplink {
 
@@ -17,7 +17,7 @@ namespace uplink {
 struct Snapshot {
   bool setup = false;       // 配网热点开着
   char setup_ssid[33] = {0};
-  char setup_pass[16] = {0};
+  char setup_pass[64] = {0};
   bool wifi_up = false;
   bool joining = false;     // 存过网络但没连上(屏幕显示 JOINING 而非 NO WI-FI)
   char ssid[33] = {0};      // 已连接/正在加入的网络
@@ -26,17 +26,19 @@ struct Snapshot {
   bool live = false;        // yahamicd 已应答:音频正在发送
   char daemon[24] = {0};    // yahamicd 的 ip:port
   bool muted = false;
-  char phase[12] = {0};     // worker 阶段:idle / discover / handshake / live(排障用)
+  bool unpaired = false;    // 没有有效配对码:不连 Mac,屏幕提示去配网页填码
+  char phase[12] = {0};     // worker 阶段:idle/discover/hello/auth/live/backoff/unpaired(排障用)
 };
 
 using MuteCommand = std::function<void(bool muted)>;
 
 void start(const char* fw_version);
 void open_setup();  // 长按按键:进入配网热点
-void on_remote_mute(MuteCommand command);  // Mac 端(Fn 键)遥控静音,worker 线程回调
+// Mac 端(Fn 键)遥控静音与断链自动静音,worker 线程回调;须在 start 之前注册。
+void on_remote_mute(MuteCommand command);
 bool consume_dump_request();               // Mac 请求的屏幕回传(一次一帧)
 
-void set_muted(bool muted);  // 静音变化(立即发一帧状态报文)
+void set_muted(bool muted);  // 静音变化(上线时立即发一帧加密状态报文);只由 mic::set_muted 调
 bool muted();
 Snapshot snapshot();
 
