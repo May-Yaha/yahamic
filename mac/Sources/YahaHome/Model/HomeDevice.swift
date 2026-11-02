@@ -10,7 +10,7 @@ protocol HomeDevice: Identifiable {
     var isOnline: Bool { get }
 }
 
-/// 第一个设备:yahamic 无线麦克风(ESP32-S3 板,Wi-Fi 直连)。
+/// 第一个设备:yahamic 无线麦克风(ESP32-S3 板,BLE 直连)。
 struct MicDevice: HomeDevice {
     var state = Uplink.State()
 
@@ -21,7 +21,7 @@ struct MicDevice: HomeDevice {
 
     /// 一行状态:离线 / 在线·静音 / 送声 -39 dB
     var statusLine: String {
-        guard state.connected else { return "等待设备上线…" }
+        guard state.connected else { return "打开设备,靠近 Mac;首次连接按屏幕上的 6 位数字配对" }
         if state.muted { return "在线 · 静音待命" }
         return String(format: "送声中 · %.0f dB · %d 帧/s", state.levelDb, state.framesPerSecond)
     }

@@ -1,6 +1,6 @@
 # Waveshare ESP32-S3-Touch-AMOLED-2.16:ESP32-S3R8(8 MB 八线 PSRAM),16 MB flash。
 # 同 OpenCharm 的 firmware/device/sdkconfig.defaults,去掉了 TLS/WebSocket 相关项
-# (yahamic 只有 mDNS + UDP)。屏幕 UI 走 LVGL 9(esp_lvgl_port),见文末 LVGL 段。
+# (yahamic 只有 BLE 外设)。屏幕 UI 走 LVGL 9(esp_lvgl_port),见文末 LVGL 段。
 CONFIG_IDF_TARGET="esp32s3"
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
@@ -11,34 +11,37 @@ CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_USE_MALLOC=y
 CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=1024
-# 内部 RAM 留给必须内部的用途(DMA、Wi-Fi),同 xiaozhi-esp32 在此芯片上的做法。
+# 内部 RAM 留给必须内部的用途(DMA、BT 控制器),同 xiaozhi-esp32 在此芯片上的做法。
 CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=102400
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_FREERTOS_HZ=1000
 # 主循环在 main 任务里跑;整屏合成在 PSRAM 画布上,栈不用很深。
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
-# 渲染主循环钉在 CPU1:Wi-Fi(及其缓冲突发)独占 CPU0,帧率不再被抢占。
+# 渲染主循环钉在 CPU1:BLE 控制器与 NimBLE host 在 CPU0,帧率不再被抢占。
 CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1=y
 # 日志走 USB-C 口(板上的 USB 就是 ESP32-S3 自带的 USB-Serial/JTAG)。
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
-# 以下两项是"这台设备"的本地选择,不随仓库发布——放在各自机器的 sdkconfig(已
-# .gitignore)里:
-#   CONFIG_YAHAMIC_AP_PASSWORD="..."   配网热点固定密码(源码默认空 = 每次随机 10 位)
-#   CONFIG_YAHAMIC_DAEMON_IP="x.x.x.x" Mac 的局域网静态地址直连(默认空 = mDNS 发现,
-#                                       路由器不转发 mDNS 组播时的逃生舱)
-CONFIG_YAHAMIC_AP_PASSWORD=""
-CONFIG_YAHAMIC_DAEMON_IP=""
-
-# Wi-Fi 缓冲按 xiaozhi-esp32 v2.5.2 在 ESP32-S3 上的配置。
-CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=3
-CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=6
-CONFIG_ESP_WIFI_RX_BA_WIN=3
-CONFIG_ESP_WIFI_DYNAMIC_RX_MGMT_BUFFER=y
-CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT=n
-CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=16
-CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+# 协议 v3:BLE GATT 外设(NimBLE),只做 peripheral、只允许 1 个连接。
+# 配对用 LE Secure Connections + 设备显示 6 位数(见 uplink.cpp),bond 存 NVS。
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_BLUEDROID_ENABLED=n
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=n
+CONFIG_BT_NIMBLE_SECURITY_ENABLE=y
+CONFIG_BT_NIMBLE_SM_SC=y
+CONFIG_BT_NIMBLE_SM_LEGACY=n
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+# 247 = 一帧 240 B Opus 加 3 B 分片头可以一包发完。
+CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=247
+# host 的内存池放 PSRAM,内部 RAM 留给 DMA 与控制器。
+CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y
+CONFIG_BT_NIMBLE_PINNED_TO_CORE_0=y
+CONFIG_BT_CTRL_PINNED_TO_CORE_0=y
+CONFIG_BT_NIMBLE_SVC_GAP_DEVICE_NAME="yahamic"
 
 # LVGL 9:RGB565;帧缓冲放 PSRAM 走 direct 模式(见 board.cpp init_screen),S3 从 PSRAM
 # 做 GPSPI DMA 要求缓冲按缓存行对齐,LVGL 默认 4 字节会让 spi_master 退回"拷到临时
@@ -48,8 +51,3 @@ CONFIG_LV_DRAW_BUF_ALIGN=64
 # tools/make_fonts.sh 生成的字体是压缩格式(bitmap_format=1,省 flash),不开此项
 # 字形会渲染成碎线段(真机实测)。
 CONFIG_LV_USE_FONT_COMPRESSED=y
-
-# 协议 v2 的会话加密是 ChaCha20-Poly1305(PSA):IDF 的 esp_config.h 在这两项关闭时
-# 会把 PSA_WANT_ALG_CHACHA20_POLY1305 去掉(默认 n),开机自检会报 "seal" 失败。
-CONFIG_MBEDTLS_CHACHA20_C=y
-CONFIG_MBEDTLS_CHACHAPOLY_C=y

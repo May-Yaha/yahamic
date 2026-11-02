@@ -64,7 +64,41 @@ public enum ListenPermission: String, Equatable, CaseIterable {
     }
 }
 
-// 全局 Fn 键监听(push-to-talk):按住 Fn = 讲话,松开 = 静音。
+/// 按住讲话的键。HHKB 等键盘的 Fn 在键盘固件里处理,macOS 收不到,得换成右侧修饰键。
+public enum TalkKey: String, CaseIterable, Sendable {
+    case fn, rightOption, rightCommand, rightControl
+
+    public var title: String {
+        switch self {
+        case .fn: return "Fn"
+        case .rightOption: return "右 Option"
+        case .rightCommand: return "右 Command"
+        case .rightControl: return "右 Control"
+        }
+    }
+
+    var keyCode: Int {
+        switch self {
+        case .fn: return 63
+        case .rightOption: return 61
+        case .rightCommand: return 54
+        case .rightControl: return 62
+        }
+    }
+
+    /// IOKit 的设备级修饰位(NX_DEVICER*KEYMASK):只看右侧那颗键,左侧同名键按着也不干扰。
+    var deviceMask: UInt64 {
+        switch self {
+        case .fn: return CGEventFlags.maskSecondaryFn.rawValue
+        case .rightOption: return 0x40
+        case .rightCommand: return 0x10
+        case .rightControl: return 0x2000
+        }
+    }
+}
+
+// 全局讲话键监听(push-to-talk):按住 = 讲话,松开 = 静音。下面说的 Fn 路径只对 .fn 适用;
+// 右侧修饰键只走 flagsChanged:键码对上且设备位置位 = 按下。
 //
 // macOS 上 Fn 有两种上报路径,不同系统版本可能只用其一,也可能并存:
 //   A) flagsChanged:Fn 修饰位翻转。即 CoreGraphics 的
@@ -99,12 +133,14 @@ public final class FnListener {
     private var keycodeFnDown = false   // 路径 B:键码 63 最近一次 keyDown/keyUp
     private var fnFlagSet = false       // 路径 A:上一条 flagsChanged 中的 Fn 位
     private var lastDown = false        // 对外状态 = 两路径并集,翻转才回调
-    private let onChange: (Bool) -> Void  // true = Fn 按下
+    private let onChange: (Bool) -> Void  // true = 讲话键按下
+    public let key: TalkKey
 
     /// 创建时预检的监听权限状态(辅助功能 + 输入监听,见 ListenPermission)。
     public let permission: ListenPermission
 
-    public init?(onChange: @escaping (Bool) -> Void) {
+    public init?(key: TalkKey = .fn, onChange: @escaping (Bool) -> Void) {
+        self.key = key
         self.onChange = onChange
         // 创建 tap 前先评估权限:辅助功能/输入监听两套授权分开记录,供调用方
         // 诊断与提示(tapCreate 在权限刚失效时仍可能“成功”,不能拿创建结果
@@ -163,7 +199,7 @@ public final class FnListener {
     /// tap 被禁用期间的 Fn 抬起会丢:按系统当前修饰键状态重置,免得卡在「按住」。
     fileprivate func resyncAfterTapDisabled() {
         keycodeFnDown = false
-        fnFlagSet = CGEventSource.flagsState(.combinedSessionState).contains(.maskSecondaryFn)
+        fnFlagSet = CGEventSource.flagsState(.combinedSessionState).rawValue & key.deviceMask != 0
         updateCombined()
     }
 
@@ -179,7 +215,7 @@ public final class FnListener {
         if type == .keyDown || type == .keyUp {
             // 键码分支(路径 B):只有 Fn 键码 63 关心;其余按键直接放行
             // (默认模式必须原样返回事件)。重复 keyDown 由 updateCombined 去抖。
-            if key == 63 {
+            if self.key == .fn && key == 63 {
                 keycodeFnDown = type == .keyDown
                 updateCombined()
             }
@@ -190,7 +226,10 @@ public final class FnListener {
         // 上一条 flagsChanged 实际翻转。按住 Fn 期间再按 Shift/Cmd 也会来
         // flagsChanged,但 Fn 位不变——整条忽略,避免误判「Fn 松开」。
         guard type == .flagsChanged else { return }
-        let fn = event.flags.contains(.maskSecondaryFn)
+        if self.key != .fn {
+            guard key == self.key.keyCode else { return }  // 别的修饰键变化不影响讲话键
+        }
+        let fn = event.flags.rawValue & self.key.deviceMask != 0
         guard fn != fnFlagSet else { return }
         fnFlagSet = fn
         var names: [String] = ["Fn=\(fn)"]

@@ -8,8 +8,8 @@
 
 // 板级支持(Waveshare ESP32-S3-Touch-AMOLED-2.16,与 OpenCharm 相同的参考板):
 // I2C 总线、CO5300 屏幕、板上按键(GPIO18)。屏幕不引 LVGL:静态状态用自带
-// 5x7 点阵字体直接画(绿 = ON AIR,红 = MUTED,蓝 = 正在找 Mac,橙 = Wi-Fi
-// 配网热点),Live 时叠加频谱律动图(见 draw_spectrum)。引脚与初始化序列同
+// 5x7 点阵字体直接画(绿 = ON AIR,红 = MUTED,蓝 = 正在找 Mac,橙 = 蓝牙
+// 配对码),Live 时叠加频谱律动图(见 draw_spectrum)。引脚与初始化序列同
 // OpenCharm 的 firmware/device/main/board.cpp(源自 Waveshare 原理图与
 // xiaozhi-esp32)。
 namespace board {
@@ -22,10 +22,10 @@ struct Board {
 
 // 屏幕要显示什么(main.cpp 按当前状态组装,board 负责画)。
 struct Screen {
-  enum class State { Boot, Setup, Joining, Searching, NoWifi, Live, Muted, Dashboard };
+  enum class State { Boot, Pairing, Searching, Live, Muted, Dashboard };
   State state = State::Boot;
   std::string line1;  // 大字:状态名(ON AIR、MUTED、…)
-  std::string line2;  // 中字:SSID、热点名、密码等
+  std::string line2;  // 中字:副标题、提示
   std::string line3;  // 中字第二行
   float level = 0;    // 响度条,0..1(当前固件未用:Live 屏电平由波形振幅表现)
   std::string status; // 底部一行小字:电量、IP、RSSI、版本
@@ -34,7 +34,7 @@ struct Screen {
 void init(Board& b);
 bool key_down();
 
-// Dashboard 屏(空闲默认屏)数据:Mac 经 type 7 周期下发(见 uplink::Dashboard;
+// Dashboard 屏(空闲默认屏)数据:Mac 经 dashboard 特征周期写入(见 uplink::Dashboard;
 // board 不直接依赖 uplink,由 main.cpp 转换后传入)。百分比统一 0..100,
 // 255 = 无效(对应环整环灰显、中心显示 "--")。
 struct DashboardData {

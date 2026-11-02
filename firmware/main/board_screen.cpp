@@ -63,15 +63,9 @@ constexpr Phrase kPhrases[] = {
     {"boot", "雅哈麦克风"},
     {"muted", "已静音"},
     {"searching", "寻找 Mac 中"},
-    {"setup", "配网模式"},
-    {"joining", "正在连接 Wi-Fi"},
-    {"nowifi", "未连接 Wi-Fi"},
     {"on_air_s", "讲话中"},
     {"hold_fn", "按住 Fn 键讲话"},
     {"run_app", "请在 Mac 上运行 Yaha 家居"},
-    {"hold_setup", "长按按键 5 秒进入配网"},
-    {"hotspot", "热点"},
-    {"password", "密码"},
     {"firmware", "固件"},
 };
 
@@ -89,7 +83,7 @@ std::string resolve_line(const std::string& s) {
   return key + suffix;  // 未知 key:露出原文,真机一眼可见
 }
 
-// —— 普通状态屏(boot/setup/joining/searching/nowifi/muted/live)——
+// —— 普通状态屏(boot/pairing/searching/muted/live)——
 // 结构:顶部状态色条(12px,沿用旧 draw() 顶条语义)+ 标题(font_zh_title,
 // 状态色)+ 两行副题(font_zh_sub,白)+ 底部分隔线(lv_line,暗灰)+ 状态行
 // (font_zh_sub,灰,对齐旧 L448-470 区域)。
@@ -164,14 +158,12 @@ void set_line(lv_obj_t* label, const std::string& text) {
   }
 }
 
-// 8 个状态的 screen 对象(boot/dash/muted/searching/joining/nowifi/setup/live)。
+// 6 个状态的 screen 对象(boot/dash/muted/searching/pairing/live)。
 // 布局分组沿用旧 draw():Live 小标题靠上(中部留给频谱);Muted/Searching/
-// Joining/NoWifi 标题居中偏上;Boot/Setup 文字组居中。
+// Boot/Pairing 文字组居中。
 StatusScreen s_boot;
-StatusScreen s_setup;
-StatusScreen s_joining;
+StatusScreen s_pairing;
 StatusScreen s_searching;
-StatusScreen s_nowifi;
 StatusScreen s_live;
 StatusScreen s_muted;
 
@@ -364,10 +356,8 @@ void refresh_dashboard() {
 lv_color_t state_color(Screen::State state) {
   switch (state) {
     case Screen::State::Boot: return kWhite;
-    case Screen::State::Setup: return kOrange;
-    case Screen::State::Joining:
+    case Screen::State::Pairing: return kOrange;
     case Screen::State::Searching: return kBlue;
-    case Screen::State::NoWifi: return kOrange;
     case Screen::State::Live: return kGreen;
     case Screen::State::Muted: return kRed;
     case Screen::State::Dashboard: return kWhite;
@@ -378,10 +368,8 @@ lv_color_t state_color(Screen::State state) {
 StatusScreen* pick(Screen::State state) {
   switch (state) {
     case Screen::State::Boot: return &s_boot;
-    case Screen::State::Setup: return &s_setup;
-    case Screen::State::Joining: return &s_joining;
+    case Screen::State::Pairing: return &s_pairing;
     case Screen::State::Searching: return &s_searching;
-    case Screen::State::NoWifi: return &s_nowifi;
     case Screen::State::Live: return &s_live;
     case Screen::State::Muted: return &s_muted;
     case Screen::State::Dashboard: return nullptr;  // 走 Dashboard 独立路径
@@ -396,15 +384,13 @@ bool ready = false;
 void init() {
   if (!lvgl_port_lock(0)) return;
   if (!ready) {
-    // 普通屏:Live 标题靠上(中部频谱区);Muted/Searching/Joining/NoWifi 居中
-    // 偏上;Boot/Setup 文字组居中。
+    // 普通屏:Live 标题靠上(中部频谱区);Muted/Searching 居中偏上;
+    // Boot/Pairing 文字组居中。
     s_live = make_status_screen(26, 300, 356);
     s_muted = make_status_screen(200, 280, 336);
     s_searching = make_status_screen(200, 280, 336);
-    s_joining = make_status_screen(200, 280, 336);
-    s_nowifi = make_status_screen(200, 280, 336);
     s_boot = make_status_screen(150, 240, 296);
-    s_setup = make_status_screen(150, 240, 296);
+    s_pairing = make_status_screen(150, 240, 296);
     make_dashboard();
     make_spectrum_chart();  // Live 屏的 lv_chart(LINE/COLUMN 由 Kconfig 定)
     ready = true;

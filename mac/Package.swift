@@ -1,8 +1,8 @@
 // swift-tools-version:6.2
 // Yaha Home:家庭智能硬件的 Mac 端控制中心(菜单栏 App),第一个设备是 yahamic
 // 无线麦克风。核心能力(设备链路、音频出口、Fn 监听)在 YahamicCore 库里,
-// 菜单栏 App(YahaHome)与命令行工具(yahamicd)都基于它。
-// 依赖方向:YahaHome / yahamicd → YahamicCore → YahamicProtocol(纯逻辑,可单测), COpus。
+// 菜单栏 App(YahaHome)基于它。
+// 依赖方向:YahaHome → YahamicCore → YahamicProtocol(纯逻辑,可单测), COpus。
 import PackageDescription
 
 let package = Package(
@@ -10,7 +10,6 @@ let package = Package(
     platforms: [.macOS(.v26)],
     products: [
         .executable(name: "YahaHome", targets: ["YahaHome"]),
-        .executable(name: "yahamicd", targets: ["yahamicd"]),
         .library(name: "YahamicCore", targets: ["YahamicCore"]),
     ],
     targets: [
@@ -23,6 +22,7 @@ let package = Package(
             path: "Sources/YahamicCore",
             linkerSettings: [
                 .linkedFramework("CoreAudio"),
+                .linkedFramework("CoreBluetooth"),
                 .linkedFramework("CoreGraphics"),
                 .linkedFramework("ApplicationServices"),
                 .unsafeFlags(["-L/opt/homebrew/lib"]),
@@ -38,14 +38,9 @@ let package = Package(
                 .linkedFramework("ServiceManagement"),
             ]
         ),
-        .executableTarget(
-            name: "yahamicd",
-            dependencies: ["YahamicCore", "YahamicProtocol"],
-            path: "Sources/yahamicd"
-        ),
         .testTarget(
             name: "YahamicProtocolTests",
-            dependencies: ["YahamicProtocol"],
+            dependencies: ["YahamicProtocol", "YahamicCore"],
             path: "Tests/YahamicProtocolTests"
         ),
     ],

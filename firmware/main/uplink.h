@@ -4,45 +4,35 @@
 #include <cstdint>
 #include <functional>
 
-#include "sdkconfig.h"
-
-// 链路层:Wi-Fi 接入(esp-wifi-connect,配网页见 components/esp-wifi-connect)、
-// 在局域网里用 mDNS 找到 Mac 上的 yahamicd(_yahamic._tcp),然后走 UDP 协议 v2:
-// 配对码双向验证的握手,之后 60 ms 一帧的 Opus 音频(16 kHz 单声道)、静音状态
-// 与保活全部加密(报文与密码学见 protocol.h)。
-// 全双工只走一个 UDP socket,设备侧无需任何 JSON 依赖(报文是"键 值"行)。
+// 链路层:协议 v3,BLE GATT 外设(NimBLE)。开机即广播 `yahamic-XXXX`,Mac 的
+// Yaha Home 连上后订阅 audio(60 ms 一帧 Opus,按 MTU 分片 notify)与 status,
+// 写 control(静音 / 屏幕回传)与 dashboard。所有特征要求加密 + MITM 认证:
+// 首次连接由系统蓝牙配对完成(设备屏幕显示 6 位数,Mac 弹框输入),bond 存 NVS。
+// 规范见 README「协议 v3」。
 namespace uplink {
 
 // 主循环每周期拉取(24-30 fps 目标节奏),用于组屏幕与日志。
 struct Snapshot {
-  bool setup = false;       // 配网热点开着
-  char setup_ssid[33] = {0};
-  char setup_pass[64] = {0};
-  bool wifi_up = false;
-  bool joining = false;     // 存过网络但没连上(屏幕显示 JOINING 而非 NO WI-FI)
-  char ssid[33] = {0};      // 已连接/正在加入的网络
-  char ip[16] = {0};
-  int rssi = 0;
-  bool live = false;        // yahamicd 已应答:音频正在发送
-  char daemon[24] = {0};    // yahamicd 的 ip:port
+  bool connected = false;   // 有 central 连着(未必已配对)
+  bool live = false;        // 已认证加密且 Mac 订阅了 audio:音频正在发送
+  uint32_t passkey = 0;     // 配对中要显示的 6 位数(0 = 不在配对)
+  int rssi = 0;             // 连接的 RSSI(dBm,2 秒缓存;未连接为 0)
   bool muted = false;
-  bool unpaired = false;    // 没有有效配对码:不连 Mac,屏幕提示去配网页填码
-  char phase[12] = {0};     // worker 阶段:idle/discover/hello/auth/live/backoff/unpaired(排障用)
+  char phase[12] = {0};     // advertising / connected / pairing / live(排障用)
 };
 
 using MuteCommand = std::function<void(bool muted)>;
 
 void start(const char* fw_version);
-void open_setup();  // 长按按键:进入配网热点
-// Mac 端(Fn 键)遥控静音与断链自动静音,worker 线程回调;须在 start 之前注册。
+// Mac 端(Fn 键)遥控静音与断链自动静音,NimBLE host 任务里回调;须在 start 之前注册。
 void on_remote_mute(MuteCommand command);
 bool consume_dump_request();               // Mac 请求的屏幕回传(一次一帧)
 
-void set_muted(bool muted);  // 静音变化(上线时立即发一帧加密状态报文);只由 mic::set_muted 调
+void set_muted(bool muted);  // 静音变化(上线时立即 notify status);只由 mic::set_muted 调
 bool muted();
 Snapshot snapshot();
 
-// type 7 dashboard(Mac→设备):空闲屏仪表盘数据,10 字节小端载荷。
+// dashboard 特征(Mac→设备):空闲屏仪表盘数据,10 字节小端载荷。
 // 无效字段统一 255;received_ms 是收到时刻的设备单调毫秒(esp_timer),
 // 供上层做新鲜度判定(超过约 10 秒未更新应回退到静音屏)。
 struct Dashboard {
@@ -56,11 +46,11 @@ struct Dashboard {
   bool valid = false;            // 是否收到过至少一帧
 };
 
-// 主循环拉取最近一次 type 7 报文(与 snapshot() 一致的轮询方式)。
+// 主循环拉取最近一次 dashboard 写入(与 snapshot() 一致的轮询方式)。
 Dashboard dashboard();
 
-// 采集线程调用(audio::set_sink 注册):把一帧 Opus 发给 yahamicd。
-// 未握手成功时直接丢弃,绝不阻塞采集。
+// 采集线程调用(audio::set_sink 注册):把一帧 Opus 分片 notify 给 Mac。
+// 未 live 时直接丢弃,绝不阻塞采集。
 void send_audio(const uint8_t* opus, size_t size, uint32_t ts_ms, float level);
 
 }  // namespace uplink

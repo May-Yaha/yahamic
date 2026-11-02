@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 APP_NAME="YahaHome"          # 路径用 ASCII,显示名用中文
 DISPLAY_NAME="Yaha 家居"
 BUNDLE_ID="com.yaha.home"
-VERSION="0.4.0"  # 与固件对齐(firmware/CMakeLists.txt PROJECT_VER),Mac 侧勿单独升版
+VERSION="0.5.0"  # 与固件对齐(firmware/CMakeLists.txt PROJECT_VER),Mac 侧勿单独升版
 BUILD_DIR="build"
 APP="$BUILD_DIR/$APP_NAME.app"
 
@@ -56,6 +56,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSHumanReadableCopyright</key><string>MIT · yahamic</string>
+  <key>NSBluetoothAlwaysUsageDescription</key><string>Yaha 家居通过蓝牙连接 yahamic 麦克风,接收音频并同步静音状态。</string>
   <key>NSMicrophoneUsageDescription</key><string>yahamic 需要访问麦克风以采集音频,用于无线麦克风功能。</string>
 </dict>
 </plist>

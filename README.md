@@ -1,44 +1,44 @@
 # yahamic — Mac mini 的无线麦克风
 
 一块约 ¥250 的 [Waveshare ESP32-S3-Touch-AMOLED-2.16](https://www.waveshare.com/ESP32-S3-Touch-AMOLED-2.16)
-开发板,刷上本仓库的固件,就变成 Mac mini 的**无线麦克风**:开机自动连上家里
-Wi-Fi、自动找到你的 Mac,Mac 上多出一个叫 "BlackHole 2ch" 的麦克风输入,任何
-应用(备忘录听写、Zoom、FaceTime、QuickTime……)都能选它。板上按键是**硬件
-静音**——按下后采集直接关闭,一比特音频都不会离开设备。
+开发板,刷上本仓库的固件,就变成 Mac mini 的**无线麦克风**:开机就用蓝牙(BLE)广播,
+Mac 上的 Yaha 家居 App 自动连上,Mac 上多出一个叫 "BlackHole 2ch" 的麦克风输入,任何
+应用(备忘录听写、Zoom、FaceTime、QuickTime……)都能选它。不用配网,首次连接按设备
+屏幕上的 6 位数字在 Mac 上配对一次即可。板上按键是**硬件静音**:按下后采集直接关闭,
+一比特音频都不会离开设备。
 
 工程基于开源项目 [OpenCharm](https://github.com/opencharm-labs/opencharm)(给 AI
-代理做"身体"的开源硬件项目,同样使用这块板子):板级驱动、Wi-Fi 配网、mDNS
-发现、构建配置均继承自它;音频链路按"纯麦克风"重新设计。感谢 OpenCharm 与
+代理做"身体"的开源硬件项目,同样使用这块板子):板级驱动与构建配置继承自它;
+音频链路按"纯麦克风"重新设计。感谢 OpenCharm 与
 xiaozhi-esp32(见 [LICENSES/THIRD_PARTY_NOTICES.md](LICENSES/THIRD_PARTY_NOTICES.md))。
 
 ```
-┌─────────────────────────┐    Wi-Fi / 局域网     ┌──────────────────────────┐
-│  设备(ESP32-S3 板)      │  UDP, 16 kHz Opus    │  Mac                     │
+┌─────────────────────────┐   BLE GATT(加密)     ┌──────────────────────────┐
+│  设备(ESP32-S3 板)      │  16 kHz Opus notify  │  Mac                     │
 │                         │ ───────────────────▶ │                          │
-│  ES7210 麦克风           │   60 ms 帧 + 握手     │  yahamicd / Yaha Home    │
-│  按键:短按静音           │   + 静音/保活         │   │ 解码、预缓冲、重采样    │
-│  长按 5s:配网           │ ◀─────────────────── │   ▼                      │
-│  屏幕:ON AIR / MUTED …  │   welcome / keepalive │  BlackHole(虚拟麦克风)   │
+│  ES7210 麦克风           │   60 ms 帧,按 MTU 分片 │  Yaha 家居(菜单栏 App)  │
+│  按键:短按静音           │   + 静音状态          │   │ 解码、预缓冲、重采样    │
+│  屏幕:配对数字 / 讲话中 │ ◀─────────────────── │   ▼                      │
+│                         │   静音指令 / 仪表盘    │  BlackHole(虚拟麦克风)   │
 └─────────────────────────┘                       │   ▲                      │
-   发现:设备用 mDNS 找 `_yahamic._tcp`            │  任何应用选它当麦克风输入  │
+   发现:设备广播 yahamic service UUID              │  任何应用选它当麦克风输入  │
                                                    └──────────────────────────┘
 ```
 
-## 为什么是 Wi-Fi,不是蓝牙
+## 为什么是 App 自己连 BLE,而不是系统蓝牙麦克风
 
-你的需求是"无线局域网**或者**蓝牙"。这个项目选 Wi-Fi,原因是硬性的:
+ESP32-S3 只有 BLE,没有经典蓝牙,做不了 macOS 认的 HFP/A2DP 麦克风;macOS 也不接受
+BLE 音频设备。所以不走系统音频协议:设备把 Opus 帧当普通 GATT 数据 notify 出来,
+Yaha 家居收下解码后写进 BlackHole,系统里看到的麦克风是 BlackHole。
 
-| | Wi-Fi(本方案) | 蓝牙 |
+| | BLE 直连(0.5.0 起) | Wi-Fi + UDP(0.4.0 及以前) |
 |---|---|---|
-| ESP32-S3 蓝牙能力 | Wi-Fi 完整 | **只有 BLE,没有经典蓝牙** |
-| macOS 侧 | 任何虚拟麦克风方案都可用 | 麦克风需要 HFP/A2DP(经典蓝牙协议),S3 不支持;macOS 也不接受 BLE 音频设备 |
-| 带宽/音质 | 16 kHz PCM 采集,Opus 32 kbps 传输,局域网压力很小 | HFP 地麦仅 8/16 kHz,还受限于不可用的协议栈 |
-| 延迟 | 局域网一跳,60 ms 帧 + 120 ms 预缓冲 | (不可行) |
-| 配对 | mDNS 自动发现,必填配对码(双向鉴权 + 加密) | — |
+| 首次使用 | 系统蓝牙配对:设备显示 6 位数,Mac 弹框输入 | 手机连热点配网 + 两端填配对码 |
+| 链路安全 | LE Secure Connections + MITM 认证,系统管理密钥 | 应用层 PBKDF2 + ChaCha20-Poly1305 |
+| 带宽 | Opus 32 kbps ≈ 4 KB/s,BLE 余量很大 | 同左 |
+| 距离 | 室内约 10 米 | 整个局域网 |
 
-如果你手上是**原版 ESP32(带经典蓝牙)**,理论上可以做 HFP 耳麦,但 ESP-IDF
-没有可用的 HFP Audio Gateway 实现,macOS 一侧也不接受 ESP32 发起的 HFP 连接,
-所以没有走通的现实路径。Wi-Fi 是唯一稳妥方案。
+需要跨房间使用时可以回到 0.4.0(提交 `dda76aa`,协议 v2)。
 
 ## 硬件清单
 
@@ -57,41 +57,39 @@ xiaozhi-esp32(见 [LICENSES/THIRD_PARTY_NOTICES.md](LICENSES/THIRD_PARTY_NOTICES
 yahamic/
 ├── firmware/                 # ESP32-S3 固件(ESP-IDF 6.1)
 │   ├── main/
-│   │   ├── main.cpp          # 30 Hz 主循环:按键(静音/配网)、屏幕、状态日志
-│   │   ├── audio.{h,cpp}     # ES7210 采集,16 kHz 单声道,60 ms Opus 帧
-│   │   ├── uplink.{h,cpp}    # Wi-Fi + mDNS 发现 + 会话状态机(握手/音频/状态/保活)
-│   │   ├── protocol.{h,cpp}  # 协议 v2 纯逻辑:报文头、key value 行、PSA 密码学、开机自检
+│   │   ├── main.cpp          # 30 Hz 主循环:按键(静音)、屏幕、状态日志
+│   │   ├── audio.{h,cpp}     # ES7210 采集,16 kHz 单声道,60 ms Opus 帧(CBR)
+│   │   ├── uplink.{h,cpp}    # BLE GATT 外设(NimBLE):广播、配对、audio 分片 notify、静音/仪表盘
 │   │   ├── mic_state.{h,cpp} # 静音唯一入口(按键 / Mac 遥控 / 断链)
 │   │   ├── board*.{h,cpp}    # CO5300 屏幕、LVGL 渲染、按键、I2C
 │   │   ├── power.{h,cpp}     # AXP2101 电量读数 + 打开麦克风供电
 │   │   └── generated/fonts/  # 屏幕中文字体子集(tools/make_fonts.sh 生成)
-│   ├── tools/protocol_vectors.py  # 协议 v2 测试向量(Mac 单测与固件自检共用)
-│   ├── components/esp-wifi-connect/   # 配网组件(78/xiaozhi 的 MIT 组件,页面换成了中文)
 │   ├── sdkconfig.defaults / partitions.csv / CMakeLists.txt
 │   └── main/Kconfig.projbuild          # CONFIG_YAHAMIC_SELFTEST(台架自检)
-├── mac/                      # Yaha Home + yahamicd(Swift 6.2+,macOS 26)
+├── mac/                      # Yaha 家居菜单栏 App(Swift 6.2+,macOS 26)
 │   ├── Sources/COpus/        # libopus 的系统库模块
-│   ├── Sources/YahamicProtocol/  # 纯逻辑:报文、key value 行、序号跟踪、会话密码学(可单测)
-│   ├── Sources/YahamicCore/  # Transport(UDP/Bonjour)、Link(会话/Opus)、Audio、Input(Fn)、Metrics
+│   ├── Sources/YahamicProtocol/  # 纯逻辑:GATT UUID、audio 分片重组、写入载荷、key value 行(可单测)
+│   ├── Sources/YahamicCore/  # Link(CoreBluetooth 链路/Opus)、Audio、Input(Fn)、Metrics
 │   ├── Sources/YahaHome/     # 菜单栏 App:App / Model / Services(控制接口、BlackHole 安装)/ Views
-│   ├── Sources/yahamicd/     # 命令行版本
-│   ├── Tests/YahamicProtocolTests/
-│   └── com.yaha.yahamicd.plist  # 开机常驻示例
+│   └── Tests/YahamicProtocolTests/
 ├── agent/                    # 研发 agent(Node)
-├── docs/architecture.md      # 模块图、依赖方向、协议 v2 时序
+├── docs/architecture.md      # 模块图、依赖方向、协议 v3 时序
 └── LICENSES/THIRD_PARTY_NOTICES.md
 ```
 
 ## 快速开始
 
-### 1. Mac 端:Yaha Home 菜单栏 App(先做这步,设备开机才能找到它)
+### 1. Mac 端:Yaha 家居菜单栏 App
 
 需要 macOS 26 与 Xcode 26(Swift 6.2+),以及 libopus(`brew install opus`)。
 
 ```bash
-# 打包并安装 Yaha Home(菜单栏 App,无 Dock 图标)
+# 打包并安装 Yaha 家居(菜单栏 App,无 Dock 图标)
 cd mac && ./scripts/make-app.sh --install
 ```
+
+首次启动系统会问是否允许 Yaha 家居使用蓝牙,选允许(之后在 系统设置 → 隐私与安全性
+→ 蓝牙 里管理)。
 
 虚拟麦克风用 BlackHole 2ch(把它想成"一根环回音频线")。没装时面板会出现
 「安装 BlackHole」卡片:**一键安装**直接下载官方 pkg(校验 sha256)并弹管理员授权,
@@ -99,15 +97,14 @@ cd mac && ./scripts/make-app.sh --install
 `brew install blackhole-2ch`)。装完若 CoreAudio 里看不到:`sudo killall coreaudiod`。
 
 顶栏出现麦克风图标即运行中:**划线线框 = 设备离线,实心划线 = 在线静音,实心 = 送声**。
-点开是控制面板:设备卡片(状态、电平、开麦/静音)、「按住 Fn 讲话」开关、输出设备
-选择、**配对码**(首次启动自动生成并存入钥匙串,可复制、可重新生成)、**开机自启**、日志。首次使用系统会弹「辅助功能」授权(监听 Fn 要用),
-到 系统设置 → 隐私与安全性 → 辅助功能 勾选 Yaha Home 即可。日志在
+点开是控制面板:设备卡片(状态、电平、蓝牙信号、开麦/静音)、「按住 Fn 讲话」开关、
+输出设备选择、**开机自启**、日志。首次使用系统会弹「辅助功能」授权(监听 Fn 要用),
+到 系统设置 → 隐私与安全性 → 辅助功能 勾选 Yaha 家居即可。日志在
 `~/Library/Logs/YahaHome.log`。
 
-> 它是你家庭智能硬件的 Mac 端控制中心:`mac/Sources/YahaHome/HomeDevice.swift` 定义了
+> 它是你家庭智能硬件的 Mac 端控制中心:`mac/Sources/YahaHome/Model/HomeDevice.swift` 定义了
 > 设备抽象,接新硬件 = 新增一个遵守 `HomeDevice` 的模型 + 一张卡片视图。核心能力
-> (设备链路、音频出口、Fn 监听)在 `YahamicCore` 库里;`yahamicd` 仍保留为命令行版
-> (`swift build -c release --product yahamicd`,`--help` 看参数),调试时更顺手。
+> (设备链路、音频出口、Fn 监听)在 `YahamicCore` 库里。
 
 ### 2. 固件构建与刷写
 
@@ -120,29 +117,27 @@ idf.py build
 idf.py flash monitor          # 板子接 USB-C;Ctrl+] 退出日志
 ```
 
+从 0.4.0 升级时先删掉旧的 `firmware/sdkconfig`(Wi-Fi 配置不再需要),让新的
+`sdkconfig.defaults` 生效。
+
 台架自检(不连 Mac,采 1 秒打印响度,确认麦克风链路):
 `idf.py menuconfig` → Yahamic → 开启 `开机自检`,重新刷写。
 
-### 3. 设备配网(只用一次)
+### 3. 蓝牙配对(只用一次)
 
-1. 上电后约一分钟(或长按按键 5 秒),板子开出热点 `Yahamic-XXXX`,
-   屏幕显示热点名和密码,日志里也有。
-   热点密码默认每次随机;想固定一个,用 `idf.py menuconfig` → Yahamic 设
-   `CONFIG_YAHAMIC_AP_PASSWORD`(至少 8 位)后重刷——这是本机私有配置,留在
-   `firmware/sdkconfig`(不入库)里即可,不要写进 `sdkconfig.defaults`。
-2. 手机连上该热点,自动弹出配网页(或浏览器打开 `192.168.4.1`)。
-3. 选家里 Wi-Fi、输密码;在「配对码」里填 Mac 面板上显示的配对码(**必填**,8–63 位可见
-   字符;命令行版 `yahamicd` 用 `--token` 指定同一个码)。没有配对码设备不会连 Mac,
-   屏幕显示 `PAIRING CODE?`。之后在配网页改码,退出配网即生效,无需重启。
-4. 提交后热点关闭,设备入网。
+1. 设备上电即广播 `yahamic-XXXX`(XXXX 为蓝牙 MAC 后两字节),Yaha 家居发现后自动连接。
+2. 首次连接时设备屏幕变橙,显示 6 位数字和 `PAIR ON MAC`;Mac 弹出系统配对框,输入这 6 位数。
+3. 配对完成后屏幕转为静音待命。配对信息两端都会记住(设备存 NVS),以后开机自动重连。
+
+换 Mac 或设备重刷过 NVS 后连不上:在 系统设置 → 蓝牙 里对 yahamic「忽略此设备」,再重连一次走配对。
 
 ### 4. 用起来
 
 - 设备屏幕变绿 `ON AIR` = 正在送声。打开 系统设置 → 声音 → 输入,选
   **BlackHole 2ch**;或在 Zoom/QuickTime 等应用里选它。
 - **短按按键**:硬件静音(屏幕红 `MUTED`,采集关闭),再按恢复。
-- **长按 5 秒**:重新开配网热点。
-- 屏幕底部常显:电量、IP、Wi-Fi 信号。
+- 屏幕底部常显:电量和蓝牙信号(`BLE -55DB`);未连接时显示 `ADV`(广播中)。
+- 走出蓝牙范围或 Mac 关蓝牙时设备自动静音,回来后自动重连。
 
 ## 压测结论与性能账本(2026-11-01)
 
@@ -201,79 +196,56 @@ printf '{"cmd":"status"}\n' | nc -U ~/Library/Application\ Support/YahaHome/cont
 
 ## 设备屏幕的中文
 
-设备不跑字库:屏幕上的中文短语(讲话中 / 已静音 / 寻找 Mac 中 / 配网模式 / 热点 /
-密码……)由 `firmware/tools/gen_text.swift` 用 **Noto Sans CJK SC**(SIL OFL 1.1)在 Mac 上
-预渲染成 8 位 alpha 位图,生成 `main/generated/text_zh.h`(约 180 KB,进 flash),固件贴图
-时按 alpha 与状态色相乘。要加/改文案,在脚本的 `phrases` 表里改一行再重新生成:
+设备不跑字库:屏幕上的中文短语(讲话中 / 已静音 / 寻找 Mac 中……)用 **Noto Sans CJK SC**
+(SIL OFL 1.1)子集化成 LVGL 字体,由 `firmware/tools/make_fonts.sh` 生成到
+`main/generated/fonts/`(生成的 .c 已提交,日常构建不需要字体文件)。要加/改文案,
+按脚本头部的说明改短语表再重新生成。动态文本(配对数字、电量、信号)用内置 ASCII 点阵。
 
-```bash
-cd firmware && swift tools/gen_text.swift tools/fonts/NotoSansCJKsc-Medium.otf main/generated/text_zh.h
-```
+## 协议 v3(设备 ⇄ Mac,BLE GATT)
 
-字体文件不进仓库(16 MB),首次从
-<https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Medium.otf>
-下载到 `firmware/tools/fonts/`。动态文本(热点名、密码、IP、电量)仍用内置 ASCII 点阵。
+v3 与 v2 不兼容:Mac(0.5.0)与固件(0.5.0)要一起升级。时序图与模块关系见
+[docs/architecture.md](docs/architecture.md);实现在 `firmware/main/uplink.cpp` 与
+`mac/Sources/YahamicProtocol/Wire.swift`、`mac/Sources/YahamicCore/Link/Uplink.swift`。
 
-## 协议 v2(设备 ⇄ Mac,UDP)
+一个自定义 service,UUID 为 `6B96000N-2D78-4CE2-963A-884ED7A5150C`(N = 1 是 service,
+2–6 是特征)。设备主广播包放 service UUID,扫描响应放名字 `yahamic-XXXX`;只允许一个连接。
+多字节字段都是小端。
 
-v2 与 v1 不兼容:Mac(0.4.0)与固件(0.4.0)要一起升级,设备刷新后在配网页填配对码。
-时序图与模块关系见 [docs/architecture.md](docs/architecture.md);编解码在
-`mac/Sources/YahamicProtocol` 与 `firmware/main/protocol.{h,cpp}`,两端共用
-`firmware/tools/protocol_vectors.py` 生成的测试向量(Mac `swift test`、固件开机自检)。
+| N | 特征 | 属性 | 内容 |
+|---|---|---|---|
+| 2 | info | read | `fw 0.5.0\nrate 16000\nframe 60\ncodec opus\n`(key value 行) |
+| 3 | audio | notify | `seq u16 ‖ frag u8 ‖ Opus 分片`;frag 低 7 位为片序号,bit7 = 末片;每片最多 MTU−6 字节 |
+| 4 | status | read + notify | `muted u8`,变化时通知 |
+| 5 | control | write | `01 muted` 设静音;`02` 请求屏幕回传 |
+| 6 | dashboard | write without response | 10 字节:`epoch u32`(UTC 秒)+ `tz i16`(分钟)+ `cpu/mem/mouse_batt/kb_batt u8`;无效字段 255,数据不新鲜时设备回退静音屏 |
 
-所有报文:小端,12 字节头 `magic 'Y' | version 2 | type | flags | seq u32 | ts u32`,
-其后为载荷。flags bit0 = 静音。明文载荷上限 512 字节,超长包直接拒收。
+- 音频:16 kHz 单声道 Opus,32 kbps CBR,60 ms 一帧(240 字节),MTU 247 时一帧两片。
+  静音且淡出结束后不发。
+- notify 在链路层可靠有序,所以没有保活、重传和重放窗口。帧只会在设备发送队列满时整帧
+  丢掉(余下分片不发),Mac 按 seq 跳号计入丢帧,不补静音。设备的 seq 跨连接不归零,
+  Mac 每次连上都重置重组状态。
+- 连接后设备主动发起加密,并请求 15–30 ms 连接间隔。Mac 订阅 audio 后写一次当前期望的
+  静音状态(按住 Fn 模式为静音,常开模式为开麦)。设备开机默认静音,断链自动静音。
 
-| type | 方向 | 加密 | 载荷 | 说明 |
-|---|---|---|---|---|
-| 1 hello | 设备→Mac | 否 | `name/fw/rate/ch/bits/frame/codec/dn`(dn = 16 字节随机数 hex) | 每 500 ms 重发直到收到 welcome |
-| 2 welcome | Mac→设备 | 否 | `ok 1`、`host`、`dn`、`mn`、`proof`;拒绝时 `ok 0`、`err`、`dn` | 设备只认握手中且 dn 对得上的 welcome/拒绝 |
-| 8 auth | 设备→Mac | 否 | `proof` | 设备的证明;Mac 验证通过才建会话 |
-| 3 audio | 设备→Mac | 是 | 16 kHz 单声道 Opus,60 ms 一帧 | 静音且淡出结束后不发 |
-| 4 status | 设备→Mac | 是 | `muted 1/0` | 静音时兼作 1 Hz 心跳 |
-| 5 keepalive | Mac→设备 | 是 | `muted X`、`cmd N`(最新静音指令) | 0.5 s 一个;设备 5 秒收不到就重新握手 |
-| 6 control | Mac→设备 | 是 | `muted X`、`cmd N`,或 `dump 1` | 遥控静音、请求屏幕回传 |
-| 7 dashboard | Mac→设备 | 是 | 10 字节:`epoch u32` + `tz i16`(分钟)+ `cpu/mem/mouse_batt/kb_batt u8` | 无效字段 255;数据不新鲜时设备回退静音屏 |
-
-密码学(HMAC 均为 HMAC-SHA256,`‖` 为拼接):
-
-```
-K      = PBKDF2-HMAC-SHA256(配对码, "yahamic-v2", 4096 轮, 32 字节)
-proof  = HMAC(K, "m" ‖ dn ‖ mn)   welcome 里 Mac 的证明
-         HMAC(K, "d" ‖ dn ‖ mn)   auth 里设备的证明(都用常量时间比较)
-k_d2m  = HMAC(K, "d2m" ‖ dn ‖ mn) 设备→Mac 方向密钥
-k_m2d  = HMAC(K, "m2d" ‖ dn ‖ mn) Mac→设备 方向密钥
-加密包 = 头 ‖ ChaCha20-Poly1305(方向密钥, nonce = 0^8 ‖ seq_LE, aad = 12 字节头) ‖ 16 字节 tag
-```
-
-- 握手:hello(dn)→ welcome(mn + Mac 证明)→ 设备验证后发 auth → Mac 验证后立即发
-  一个加密 control(当前静音指令),设备收到这个包才进入 live。
-- 每个会话两个方向的 seq 都从 1 重新计数;接收方先验 tag 再处理。设备侧控制类包要求
-  seq 严格递增,Mac 侧用序号跟踪去重、丢迟到包、识别重置。
-- 上线后的明文包一律丢弃;伪造的拒绝包对不上 dn,打不断链路。被拒后设备退避 5 秒。
-- 静音同步:Mac 的每个 keepalive 都带最新静音指令,设备只在 `cmd` 变化时执行,丢一个
-  control 也会被下一个 keepalive 纠正。设备开机默认静音,断链自动静音。
-
-Yaha Home 默认以 120 ms 为预缓冲与漂移校正目标,命令行可用 `--jitter-ms` 调整;
-渲染端按缓冲水位做 ±0.5% 内的时钟漂移微调。链路断开(Mac 合盖、守护进程重启)
-后设备自动重新握手,Mac 恢复即自动接上,无需重新配网。
+Yaha 家居默认以 120 ms 为预缓冲与漂移校正目标;渲染端按缓冲水位做 ±0.5% 内的时钟漂移
+微调。链路断开后 Mac 一直挂着连接请求,设备回到范围内由系统自动连上。
 
 ## 安全模型
 
-配对码必填,两端必须一致(Mac 面板生成并存钥匙串;设备存在 NVS,日志里不打印)。
+链路安全全部交给蓝牙控制器:LE Secure Connections(ECDH P-256)+ MITM 认证 + bonding。
 
-- **防冒充 Mac 窃听**:设备只在验证 Mac 的证明后才发 auth、才送声;证明含设备本次的
-  随机数 dn,重放旧 welcome 无效。
-- **防注入音频**:Mac 只在验证设备的证明后建会话,之后只接受能用会话密钥验签的包。
-- **防窃听与篡改**:音频、静音、仪表盘全部 ChaCha20-Poly1305 加密,头部作为附加数据
-  参与认证。
-- **离线猜码**:证明里含双方随机数,嗅探到的握手只能拿去离线爆破,PBKDF2 4096 轮加上
-  最少 8 位配对码抬高成本。App 生成的 10 位码(去掉易混字符的字母数字)约 50 比特。
+- **全部特征要求加密且已认证**(`READ/WRITE/NOTIFY_*_ENC | *_AUTHEN`)。未配对的 central
+  (例如别人的手机)能看到广播,但读不到 info/status、订阅不了 audio、写不进静音和仪表盘。
+- **配对用 passkey entry**:设备 IO 能力为 DisplayOnly,每次配对随机生成 6 位数只显示在
+  屏幕上(不进日志),Mac 输入后完成认证,防止中间人;
+  要配对就得看得到设备屏幕。关掉了 legacy pairing。
+- 如果加密完成但没有 MITM 认证(对端用 Just Works),设备立即断开。
+- bond 密钥设备存 NVS、Mac 存系统钥匙串;Mac 删掉配对后再连,设备删旧 bond 重新配对。
 - 本机控制接口只对当前用户开放(见上文)。
 
 ## 已验证 / 未验证
 
-**已验证(2026-11-01,协议 v1,ESP-IDF 6.1 + macOS 26 + 真机端到端):**
+**已验证(2026-11-01,协议 v1 / Wi-Fi,ESP-IDF 6.1 + macOS 26 + 真机端到端):**
 
 - 固件与 Mac 构建、刷写和设备重连;ES7210 以 16 kHz/60 ms 采集并经 Opus 发送,
   屏幕、电量、按键硬件静音正常。
@@ -282,22 +254,27 @@ Yaha Home 默认以 120 ms 为预缓冲与漂移校正目标,命令行可用 `--
 - Mac 控制接口 100 次请求失败 0;Fn 事件、1 秒粒度静音切换、App 重启自动恢复、
   解码后 PCM WAV 录制均通过实测。
 - 设备波形真机达到 24.3–24.8 fps,采集间隔保持 59–60 ms。
-- daemon 的 Bonjour 注册用 dnssd,传输层用 BSD socket,避免进程反复重启时的
-  系统服务粘滞;同设备重连会重置序号、抖动缓冲与渲染会话。
 
 **未验证 / 已知事项:**
 
-- 协议 v2(0.4.0):Mac `swift test` 与固件开机自检共用测试向量通过,固件已刷机启动;
-  真机配对、压测、长静音回归待配网后复验。
+- 协议 v3(0.5.0,BLE):Mac `swift build`/`swift test` 与固件构建通过;真机配对、压测、
+  断链重连与长静音回归待复验。上面的「已验证」条目和前文压测数据都来自 Wi-Fi 版本。
+- 设备只接受一个连接:Mac 不在线时,别的设备连上会占住链路(配不上对就一直停在配对屏),
+  断开后恢复广播。
 
 - 豆包输入法内的文字级听写重复:已验证 Fn 到 BlackHole 的链路,仍需在豆包中
   做人工听写复验,不能仅凭音频指标宣称完全解决。
-- Fn 键:Apple 键盘/妙控键盘可用;部分第三方键盘的 Fn 不上报给 macOS(用设备
-  按键代替)。某些路由器不转发 mDNS 时可使用静态 daemon 地址。
-- launchd(LaunchAgent)环境下 daemon 表现异常时,先用终端方式运行。
+- 讲话键:Apple 键盘/妙控键盘用 Fn;HHKB 等键盘的 Fn 在键盘固件里处理、不上报 macOS,
+  在面板「讲话键」里改成右 Option / 右 Command / 右 Control(只认右侧那颗)。
+
+**配合豆包 / 微信输入法听写**:面板「听写输入法」点「接入豆包」或「接入微信」,会把系统默认
+输入切到 BlackHole 2ch(微信输入法只认系统默认输入),并打开该输入法的设置。设置里要手动
+确认两项(输入法没有可写的配置接口):麦克风选「BlackHole 2ch」或「跟随系统」;语音快捷键
+设成「长按」与 Yaha 家居相同的讲话键(HHKB 用空格右侧的 ◇,即右 Command)。按住时 Yaha 开麦、输入法开始听,
+松开两边同时停。面板上有「还原系统输入」按钮;切走默认输入会让其他 App 的麦克风也变成 Yaha。
 - 电池续航、超过 1 小时连续送声和实际通话时延仍未测。
 
-**联调中踩过并修掉的坑(供后来者,含系统升级)**:
+**联调中踩过并修掉的坑(供后来者,含系统升级;Wi-Fi 相关几条来自 0.4.0 及以前)**:
 
 - **Fn 键(macOS 26)不再设置 SecondaryFn 修饰位**,只以键码 63 上报——监听要同时
   覆盖 flagsChanged 与 keyDown/keyUp 的键码 63(mac/Sources/YahamicCore/FnListener.swift)。
@@ -326,31 +303,29 @@ Yaha Home 默认以 120 ms 为预缓冲与漂移校正目标,命令行可用 `--
 - 讲话动效可选:`idf.py menuconfig` → Yahamic → 「讲话时的屏幕动效」,正弦声波(默认)
   或频谱柱;声波随音量起伏,并由频谱重心驱动流速与周期,带柔光描边
 - **空闲/离线**:显示麦克风图标与连接状态;录音时才切换为实时波形
-- **设备短按按键**:同样的静音开关;**长按 5 秒**:重新配网
-- 屏幕底部:电量 IP 信号;配网屏:热点名与密码(密码可在固件里固定,见上文)
+- **设备短按按键**:同样的静音开关
+- 屏幕底部:电量与蓝牙信号;配对屏:6 位配对数字
 
 ## 故障排查
 
 | 症状 | 处置 |
 |---|---|
-| 屏幕一直 `SEARCHING` | Mac 上 yahamicd 起了吗?`--verbose` 看日志;两端在同一网段/同一 VLAN?路由器开了 AP 隔离(mDNS 被拦)就关掉它 |
-| App 日志「配对码不匹配」/ 设备日志 `welcome proof doesn't match` | 长按 5 秒进配网页,填 Mac 面板上的配对码后退出配网 |
-| 屏幕 `PAIRING CODE?` | 设备没有有效配对码:长按 5 秒进配网页填码 |
-| 应用里没有 BlackHole 2ch | 面板「安装 BlackHole」一键安装,或 `brew install blackhole-2ch`;仍看不到就 `sudo killall coreaudiod`;`yahamicd --list-devices` 确认设备名,必要时 `--device` 指定 |
-| 声音卡顿 | `--jitter-ms 100` 加大缓冲;离路由器近些;`--verbose` 看 溢/欠 计数 |
-| 设备连不上 Wi-Fi | 确认是 2.4 GHz 网络;长按 5 秒重开配网 |
-| 想换 Wi-Fi | 长按 5 秒,配网页里「忘记」旧网络 |
+| 屏幕一直 `寻找 Mac 中`,底部 `ADV` | Yaha 家居在运行吗?系统设置 → 隐私与安全性 → 蓝牙 里允许了吗?Mac 蓝牙开着吗?靠近一些 |
+| App 日志「蓝牙权限」警告 | 系统设置 → 隐私与安全性 → 蓝牙,打开 Yaha 家居 |
+| 一直不出配对框 / 日志「读取失败」「订阅失败」 | 设备重刷过或 Mac 换过:系统设置 → 蓝牙 里忽略 yahamic,再等它重连配对 |
+| 屏幕停在橙色配对数字 | Mac 上的系统配对框被关掉了:断电重启设备再配一次 |
+| 应用里没有 BlackHole 2ch | 面板「安装 BlackHole」一键安装,或 `brew install blackhole-2ch`;仍看不到就 `sudo killall coreaudiod` |
+| 声音卡顿 | 靠近 Mac、避开金属遮挡;控制接口 `status` 看 `rssi` 与 `droppedFrames`,`stress 60` 复现 |
 
 ## 产品演进:从无线麦克风到个人智能中枢
 
-- **当前可用**:ESP32 无线麦克风、Fn 对讲、硬件静音、Yaha Home 菜单栏控制、
-  BlackHole 系统输入、自动重连、PCM 诊断与可重复压力测试。
+- **当前可用**:ESP32 无线麦克风、Fn 对讲、硬件静音、Yaha 家居菜单栏控制、
+  BlackHole 系统输入、蓝牙自动重连、PCM 诊断与可重复压力测试。
 - **下一阶段(Mac 中枢)**:以 `HomeDevice` 统一接入更多设备,补齐设备分组、
-  连接质量展示、事件通知、场景开关和本地自动化;控制接口保持仅监听回环地址。
+  连接质量展示、事件通知、场景开关和本地自动化;控制接口保持仅本用户可连。
 - **再往后(智能能力)**:在稳定音频入口上增加本地语音指令、设备联动与个人任务
-  自动化;按需增加 24 kHz 音质档、其它麦克风板子和 BLE 控制通道。
-- **安全基础**:跨网段或不可信网络使用前,增加 ChaCha20 预共享密钥或 WireGuard;
-  智能中枢的设备权限、日志与语音数据默认留在本机。
+  自动化;按需增加 24 kHz 音质档(BLE 2M PHY 余量足够)和其它麦克风板子。
+- **安全基础**:智能中枢的设备权限、日志与语音数据默认留在本机。
 
 ## 许可证
 

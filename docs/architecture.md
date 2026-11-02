@@ -1,70 +1,70 @@
 # Yahamic 架构
 
 三部分:ESP32-S3 固件(`firmware/`)、Mac 端 SwiftPM 包(`mac/`)、研发 agent(`agent/`)。
-线上协议的规范在 README「协议 v2」一节,本文只讲模块边界与时序。
+设备与 Mac 走 BLE GATT 直连,协议规范在 README「协议 v3」一节,本文只讲模块边界与时序。
 
 ## Mac(`mac/`,macOS 26,Swift 6.2)
 
 ```
-YahaHome(菜单栏 App)──┐
-                      ├──▶ YahamicCore ──▶ YahamicProtocol
-yahamicd(命令行)──────┘          │
-                                 └──▶ COpus(系统库 libopus,pkg-config)
+YahaHome(菜单栏 App)──▶ YahamicCore ──▶ YahamicProtocol
+                              │
+                              └──▶ COpus(系统库 libopus)
 ```
 
 | 模块 | 职责 | 约束 |
 |---|---|---|
-| `YahamicProtocol` | `Wire`(12 字节头)、`Fields`(`key value` 行)、`SessionCrypto`(PBKDF2/HMAC/ChaChaPoly)、`SeqTracker`(去重/迟到/重置) | 纯逻辑,无 I/O,不依赖其他模块;全部在 `Tests/YahamicProtocolTests` 单测 |
+| `YahamicProtocol` | `Wire`(GATT UUID、control/dashboard 载荷)、`FrameAssembler`(audio 分片重组、跳号计数)、`Fields`(`key value` 行) | 纯逻辑,无 I/O,不依赖其他模块;全部在 `Tests/YahamicProtocolTests` 单测 |
 | `COpus` | libopus 的 modulemap + shim | 只做 C 接口桥接 |
-| `YahamicCore/Transport` | `UdpTransport`(BSD socket + dispatch source)、`Bonjour`(dnssd 注册) | fd 在 source 的 cancel handler 里关 |
-| `YahamicCore/Link` | `Uplink`(握手与会话状态机)、`OpusDecoder` | `Uplink` 的状态只在它自己的串行 queue 上读写 |
+| `YahamicCore/Link` | `Uplink`(CoreBluetooth central:扫描、连接、订阅、写入)、`OpusDecoder` | `CBCentralManager` 的回调与 `Uplink` 的状态都在它自己的串行 queue 上 |
 | `YahamicCore/Audio` | `JitterBuffer`、`AudioSink`(渲染到 BlackHole)、`Devices`(设备与采样率监听) | render 回调每次只加一次锁 |
 | `YahamicCore/Input` | `FnListener`(CGEventTap) | |
-| `YahamicCore/Metrics` | `MetricsCollector`(仪表盘 type 7 的数据源) | |
-| `YahaHome/Model` | `HomeModel`(生命周期、设置)、`+Control`(控制命令分发)、`+Diagnostics`(capture/metrics/stress)、`Pairing`(配对码生成与钥匙串) | `@MainActor` |
+| `YahamicCore/Metrics` | `MetricsCollector`(dashboard 特征的数据源) | |
+| `YahaHome/Model` | `HomeModel`(生命周期、设置)、`+Control`(控制命令分发)、`+Diagnostics`(capture/metrics/stress) | `@MainActor` |
 | `YahaHome/Services` | `ControlServer`(Unix socket 0600)、`BlackHoleSetup` | |
 | `YahaHome/Views` | 面板卡片 | 只读 `HomeModel` |
+
+`Uplink` 记住上次连上的 peripheral(UserDefaults `yahamic.peripheral`),启动时优先连它;
+它 5 秒没连上才换成新发现的设备。断开后立即再挂一个 `connect`,设备回到范围内由系统连上。
+音频路径:`FrameAssembler → OpusDecoder → JitterBuffer → AudioSink`。
 
 ## 固件(`firmware/main/`,ESP-IDF 6.1)
 
 | 文件 | 职责 |
 |---|---|
-| `protocol.{h,cpp}` | 头部编解码、`field()`、配对码校验、v2 密码学(PSA)、开机自检。不碰 socket/Wi-Fi |
-| `uplink.{h,cpp}` | Wi-Fi 事件、mDNS 发现、会话状态机(worker 任务)、发包 |
+| `uplink.{h,cpp}` | NimBLE 外设:广播、配对(passkey 上屏)、GATT 读写、audio 分片 notify、RSSI |
 | `mic_state.{h,cpp}` | 静音唯一入口 `mic::set_muted / toggle`,串起 `audio` 与 `uplink` |
-| `audio.{h,cpp}` | ES7210 采集、Opus 编码、静音淡出、频谱 |
+| `audio.{h,cpp}` | ES7210 采集、Opus 编码(CBR)、静音淡出、频谱 |
 | `board*`、`power.*` | 屏幕、按键、AXP2101 电源 |
 | `main.cpp` | 组装模块、屏幕状态合成(`compose`) |
 
-锁顺序:`mic` 的 mutex → `uplink` 的 `socket_lock`。持有 `socket_lock` 时不回调
-`on_remote_mute`。
+线程:NimBLE host 任务写连接状态(原子量);采集线程调 `send_audio` 直接 notify;
+主循环拉 `snapshot()` / `dashboard()`。锁顺序:`mic` 的 mutex → `uplink` 的 `dash_lock`。
+`on_remote_mute` 在 host 任务里回调,回调时不持 `uplink` 的任何锁。
 
-固件 worker 的阶段:`idle → discover → hello → auth → live`,被拒进入 `backoff`(5 秒),
-握手 10 秒无果或 live 后 5 秒收不到包则重新发现/握手。没有有效配对码时停在 idle,
-屏幕显示 `PAIRING CODE?`。
+链路阶段(`Snapshot.phase`):`advertising → connected → pairing(passkey 非 0)→ live`
+(已加密认证且订阅了 audio)。断开即静音、清仪表盘、重新广播。
 
-## 协议 v2 时序
+## 协议 v3 时序
 
 ```
 设备                                         Mac
- │ hello  name/fw/…/dn                       │
- │──────────────────────────────────────────▶│ 生成 mn
- │          welcome ok 1/dn/mn/proof_m       │
- │◀──────────────────────────────────────────│
- │ 验证 proof_m,派生 k_d2m/k_m2d             │
- │ auth  proof_d                             │
- │──────────────────────────────────────────▶│ 验证 proof_d,建会话
- │          control(加密)muted X/cmd N      │
- │◀──────────────────────────────────────────│
- │ 进入 live                                  │
- │ audio/status(k_d2m 加密)                 │
+ │ 广播 service UUID + 名字                   │
+ │◀──────────────────────────────────────────│ connect
+ │ security_initiate;请求 15–30 ms 间隔       │
+ │   新 Mac:屏幕显示 6 位数 ⇄ 系统框输入      │
+ │   已 bond:直接用旧密钥加密                │
+ │◀──────────────────────────────────────────│ 读 info,订阅 status / audio
+ │ live                                      │
+ │◀──────────────────────────────────────────│ control 01 muted(当前期望的静音)
+ │ audio notify(seq ‖ frag ‖ Opus 分片)       │
+ │══════════════════════════════════════════▶│ 重组 → 解码 → 抖动缓冲
+ │ status notify(muted)                     │
  │══════════════════════════════════════════▶│
- │          keepalive/control/dashboard(k_m2d)│
- │◀══════════════════════════════════════════│
+ │◀══════════════════════════════════════════│ control(Fn)/ dashboard(3 s)
 ```
 
-测试向量:`firmware/tools/protocol_vectors.py` 生成;Mac `swift test` 与固件
-`proto::self_test()` 用同一组。改密码学任一端都要先改这个脚本。
+测试:Mac `swift test` 覆盖分片重组、跳号、seq 回绕与写入载荷编码;UUID 常量要与
+`uplink.cpp` 的 `YAHA_UUID` 一致(测试里有一条固定值断言)。
 
 ## Agent(`agent/`)
 

@@ -18,6 +18,7 @@ final class HomeModel: ObservableObject {
     // —— 运行状态 ——
     @Published var logs: [String] = []
     @Published var outputs: [OutputDevice] = []
+    @Published private(set) var defaultInput = "-"  // 系统默认输入设备名(听写输入法从这里取声)
     @Published var audioError: String?
     @Published var fnAvailable = false
     @Published var needsAccessibility = false  // 需要辅助功能权限(界面显示申请卡片)
@@ -33,13 +34,23 @@ final class HomeModel: ObservableObject {
             if started { applyPushToTalk() }
         }
     }
+    /// 按住讲话的键。HHKB 的 Fn 不上报 macOS,选右侧修饰键。
+    @Published var talkKey: TalkKey {
+        didSet {
+            defaults.set(talkKey.rawValue, forKey: "talkKey")
+            guard started, fn?.key != talkKey else { return }
+            fn?.stop()  // 先停旧 tap 再重建,任意时刻至多一个活动 tap
+            fn = nil
+            fnAvailable = false
+            ensureFnListener()
+        }
+    }
     @Published var outputDeviceName: String {
         didSet {
             defaults.set(outputDeviceName, forKey: "outputDevice")
             if started && sink?.deviceName != outputDeviceName { startAudio() }
         }
     }
-    @Published private(set) var pairingCode: String  // 钥匙串里;改码要重建链路
     @Published var jitterMs: Int {
         didSet { defaults.set(jitterMs, forKey: "jitterMs") }
     }
@@ -49,7 +60,7 @@ final class HomeModel: ObservableObject {
     private let jitter: JitterBuffer
     private(set) var sink: AudioSink?
     private(set) var uplink: Uplink?
-    private var metricsCollector: MetricsCollector?  // 仪表盘采样器(type 7 数据源)
+    private var metricsCollector: MetricsCollector?  // 仪表盘采样器(dashboard 数据源)
     private var metricsTimer: Timer?                 // 只建一次;链路重建不重建 Timer
     private var control: ControlServer?
     private var fn: FnListener?
@@ -76,8 +87,8 @@ final class HomeModel: ObservableObject {
     private init() {
         pttEnabled = defaults.object(forKey: "ptt") as? Bool ?? true
         outputDeviceName = defaults.string(forKey: "outputDevice") ?? "BlackHole"
-        pairingCode = Pairing.loadOrCreate(migrating: defaults)
-        // 旧默认 60ms 在 Wi-Fi 偶发抖动下偏紧(语音转写会听到重复),迁移到 120ms。
+        talkKey = defaults.string(forKey: "talkKey").flatMap(TalkKey.init(rawValue:)) ?? .fn
+        // 旧默认 60ms 偏紧(语音转写会听到重复),迁移到 120ms。
         let stored = defaults.object(forKey: "jitterMs") as? Int ?? 60
         let effective = stored == 60 ? 120 : stored
         if stored == 60 { defaults.set(120, forKey: "jitterMs") }
@@ -152,6 +163,44 @@ final class HomeModel: ObservableObject {
 
     func refreshOutputs() {
         outputs = YahamicCore.outputDevices().sorted { $0.name < $1.name }
+        defaultInput = YahamicCore.defaultInputName() ?? "-"
+    }
+
+    // MARK: 听写输入法
+
+    /// 本机装了的听写输入法(看 /Library/Input Methods 下的 App 是否存在)。
+    var installedIMEs: [DictationIME] {
+        DictationIME.allCases.filter { FileManager.default.fileExists(atPath: $0.settingsApp) }
+    }
+
+    /// 一键接入:系统默认输入切到虚拟麦克风(微信输入法只认系统默认,豆包选「跟随系统」也走这条),
+    /// 再打开输入法设置。语音快捷键与麦克风选项在输入法私有配置里,没有接口可写,只能提示用户确认。
+    func connectIME(_ ime: DictationIME) {
+        let target = outputDeviceName
+        if let current = YahamicCore.defaultInputName(), current != target {
+            defaults.set(current, forKey: "previousInput")
+        }
+        if YahamicCore.setDefaultInput(named: target) {
+            log("系统默认输入 → \(target)(\(ime.title)听写用)")
+        } else {
+            log("⚠️ 没找到输入设备 \(target),先装 BlackHole")
+        }
+        NSWorkspace.shared.open(URL(fileURLWithPath: ime.settingsApp))
+        refreshOutputs()
+    }
+
+    /// 还原接入前的系统默认输入。
+    var previousInput: String? { defaults.string(forKey: "previousInput") }
+
+    func restoreInput() {
+        guard let name = previousInput else { return }
+        if YahamicCore.setDefaultInput(named: name) {
+            log("系统默认输入还原 → \(name)")
+            defaults.removeObject(forKey: "previousInput")
+        } else {
+            log("⚠️ 还原失败:找不到输入设备 \(name)")
+        }
+        refreshOutputs()
     }
 
     private func startAudio() {
@@ -240,7 +289,7 @@ final class HomeModel: ObservableObject {
 
     private func startUplink() {
         uplink?.stop()
-        let link = Uplink(code: pairingCode, jitter: jitter, verbose: false, pushToTalk: pttEnabled)
+        let link = Uplink(jitter: jitter, verbose: false, pushToTalk: pttEnabled)
         link.audioSink = sink  // 接线:断供事件计数需要「流活跃」标记
         link.onLog = { [weak self] line in
             DispatchQueue.main.async { self?.log(line, stamped: true) }
@@ -263,7 +312,7 @@ final class HomeModel: ObservableObject {
                    state.bufferMs, state.overflows, state.underruns))
     }
 
-    // 仪表盘上报(协议 type 7):设备空闲屏大字时钟 + 2x2 仪表(CPU/内存/键鼠电量)
+    // 仪表盘上报(dashboard 特征):设备空闲屏大字时钟 + 2x2 仪表(CPU/内存/键鼠电量)
     // 的数据源,3s 周期采样。Timer 只建一次(startUplink 随链路重建会被多次调用),
     // 每次读 self.uplink,链路重建后自动跟到新实例。未上线时 sendDashboard 自己丢弃。
     private func startDashboardReporter() {
@@ -284,22 +333,6 @@ final class HomeModel: ObservableObject {
 
     func toggleMute() {
         uplink?.sendControl(muted: !mic.state.muted)
-    }
-
-    func copyPairingCode() {
-        copyToPasteboard(pairingCode)
-    }
-
-    /// 换新配对码:旧设备会掉线,需在设备配网页填入新码。
-    func regeneratePairingCode() {
-        let code = Pairing.generate()
-        guard Pairing.save(code) else {
-            log("⚠️ 配对码写入钥匙串失败,未更换")
-            return
-        }
-        pairingCode = code
-        startUplink()
-        log("已生成新配对码,链路已重建;设备配网页需填入同一个码")
     }
 
     private func applyPushToTalk() {
@@ -345,16 +378,17 @@ final class HomeModel: ObservableObject {
                 _ = ListenPermission.request()
             }
         } else if fn == nil {
-            if let listener = FnListener(onChange: { [weak self] down in
+            let name = talkKey.title
+            if let listener = FnListener(key: talkKey, onChange: { [weak self] down in
                 DispatchQueue.main.async {
                     self?.uplink?.sendControl(muted: !down)
-                    self?.log(down ? "Fn 按下 → 送声" : "Fn 松开 → 静音")
+                    self?.log(down ? "\(name) 按下 → 送声" : "\(name) 松开 → 静音")
                 }
             }) {
                 // 此处 fn 必为 nil(上面的 else if 守卫),旧实例已在丢弃前 stop。
                 fn = listener
                 fnAvailable = true
-                log("按住 Fn 讲话:已启用")
+                log("按住 \(name) 讲话:已启用")
             } else {
                 log("⚠️ Fn 监听创建失败")
             }
@@ -429,5 +463,16 @@ final class HomeModel: ObservableObject {
         logs.append(line)
         if logs.count > 300 { logs.removeFirst(logs.count - 300) }
         if let data = (line + "\n").data(using: .utf8) { logHandle?.write(data) }
+    }
+}
+
+enum DictationIME: CaseIterable {
+    case doubao, wetype
+
+    var title: String { self == .doubao ? "豆包" : "微信" }
+    var settingsApp: String {
+        self == .doubao
+            ? "/Library/Input Methods/DoubaoIme.app/Contents/Applications/DoubaoImeSettings.app"
+            : "/Library/Input Methods/WeType.app/Contents/MacOS/WeTypeSettings.app"
     }
 }

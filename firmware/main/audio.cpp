@@ -288,6 +288,7 @@ bool init(i2c_master_bus_handle_t bus) {
   enc_cfg.frame_duration = ESP_OPUS_ENC_FRAME_DURATION_60_MS;
   enc_cfg.application_mode = ESP_OPUS_ENC_APPLICATION_VOIP;
   enc_cfg.complexity = 0;
+  enc_cfg.enable_vbr = false;  // CBR:每帧 240 B,BLE 分片数固定(见 uplink::send_audio)
   if (esp_opus_enc_open(&enc_cfg, sizeof enc_cfg, &opus_encoder) != ESP_AUDIO_ERR_OK) {
     ESP_LOGE(kTag, "Opus encoder open failed");
     opus_encoder = nullptr;
@@ -296,7 +297,7 @@ bool init(i2c_master_bus_handle_t bus) {
   // 32 KB 内部栈:去掉 AEC 后内部 RAM 充裕;PSRAM 栈在 Core 1 上引发过
   // LoadProhibited(缓存一致性问题),内部栈无此忧。采集固定在 Core 1(与主循环
   // 同核,sdkconfig 的 MAIN_TASK_AFFINITY_CPU1),优先级 6 高于主循环,每 60 ms
-  // 抢占一次;Core 0 留给 Wi-Fi 与 LVGL。
+  // 抢占一次;Core 0 留给 BLE 与 LVGL。
   if (xTaskCreatePinnedToCore(capture_loop, "yahamic_mic", 32768, nullptr, 6, &task, 1) != pdPASS) {
     ESP_LOGE(kTag, "capture task didn't start");
     return false;

@@ -4,11 +4,12 @@
 // 而非固定周期,渲染耗时决定实际帧率。频带数据由采集线程约 60 ms 一刷新
 // (audio,与 Opus 帧同步),波形的帧间平滑、频谱重心门限/平滑与相位连续的
 // 流速/空间周期驱动、逐带"渲染→DMA 传屏"都在 board 侧;音频走采集线程直发
-// (60 ms 一帧 Opus,FFT 也在那里),网络握手走 uplink 的 worker 任务。
-// 按键:短按 = 硬件静音/取消静音(静音时 codec 关闭,一比特都不出设备);
-// 长按 5 秒 = 打开 Wi-Fi 配网热点。Mac 键盘的 Fn 键(按住讲话)与断链自动静音
-// 走同一条静音路径(mic::set_muted)。开机默认静音。
+// (60 ms 一帧 Opus,FFT 也在那里),BLE 事件走 NimBLE host 任务。
+// 按键:短按 = 硬件静音/取消静音(静音时 codec 关闭,一比特都不出设备)。
+// Mac 键盘的 Fn 键(按住讲话)与断链自动静音走同一条静音路径(mic::set_muted)。
+// 开机默认静音。链路是 BLE 直连(uplink),首次连接在屏幕上显示 6 位配对码。
 #include <atomic>
+#include <cstdio>
 #include <string>
 
 #include "audio.h"
@@ -47,11 +48,10 @@ void battery_task(void*) {
 constexpr uint32_t kLoopMs = 28;  // 渲染约25ms,给快照/采集让出时间,目标24-30fps(实测24.3-24.8)
 constexpr uint32_t kDebounceMs = 20;   // 按键消抖(同 OpenCharm)
 constexpr uint32_t kPressMs = 400;     // 短按上限:按住超过这个不算短按
-constexpr uint32_t kHoldSetupMs = 5000; // 长按这么久打开配网
 constexpr uint32_t kStatusEveryMs = 1000;   // 读电池的间隔
 constexpr uint32_t kLogEveryMs = 10000;     // 状态日志的间隔
 constexpr int kSpecBars = 32;      // 对数频带数(重心/波形/色柱的输入),与 board 一致
-constexpr uint32_t kDashboardFreshMs = 10000;  // type 7 新鲜度窗口:超时回退 Muted
+constexpr uint32_t kDashboardFreshMs = 10000;  // dashboard 新鲜度窗口:超时回退 Muted
 constexpr uint32_t kDashboardTickMs = 1000;    // Dashboard 屏时钟重绘节奏(秒级)
 
 uint32_t now_ms() { return uint32_t(esp_timer_get_time() / 1000); }
@@ -65,35 +65,23 @@ void init_nvs() {
   ESP_ERROR_CHECK(err);
 }
 
-// 屏幕状态 = Wi-Fi 状态 × 链路状态 × 静音状态(空闲时再看 type 7 新鲜度:
+// 屏幕状态 = 配对 × 链路 × 静音(空闲时再看 dashboard 新鲜度:
 // 新鲜 → Dashboard 仪表盘,否则 → Muted)。
 board::Screen compose(const uplink::Snapshot& s, const power::Reading& battery,
                       const uplink::Dashboard& dash, uint32_t now) {
   board::Screen screen;
-  if (s.setup) {
-    screen.state = board::Screen::State::Setup;
-    screen.line1 = "#setup";
-    screen.line2 = std::string("#hotspot ") + s.setup_ssid;
-    screen.line3 = std::string("#password ") + s.setup_pass;
-  } else if (s.unpaired) {  // 没有有效配对码:不连 Mac,只能去配网页填码
-    screen.state = board::Screen::State::NoWifi;
-    screen.line1 = "PAIRING CODE?";
-    screen.line2 = "#hold_setup";
-  } else if (!s.wifi_up) {
-    if (s.joining) {  // 配过网,正在连或重试:不是没配过
-      screen.state = board::Screen::State::Joining;
-      screen.line1 = "#joining";
-    } else {
-      screen.state = board::Screen::State::NoWifi;
-      screen.line1 = "#nowifi";
-      screen.line2 = "#hold_setup";
-    }
+  if (s.passkey) {  // 首次配对:Mac 弹系统框,输入屏幕上的 6 位数
+    char digits[16];
+    snprintf(digits, sizeof digits, "%03u %03u", unsigned(s.passkey / 1000), unsigned(s.passkey % 1000));
+    screen.state = board::Screen::State::Pairing;
+    screen.line1 = digits;
+    screen.line2 = "PAIR ON MAC";
   } else if (!s.live) {
     screen.state = board::Screen::State::Searching;
     screen.line1 = "#searching";
     screen.line2 = "#run_app";
   } else if (s.muted) {
-    // 握手完成且非 Live 的空闲屏:type 7 数据新鲜(10s 内收到过)进 Dashboard。
+    // 已连上且非 Live 的空闲屏:dashboard 数据新鲜(10s 内收到过)进 Dashboard。
     // why 回退 Muted:蓝牙断续/守护进程退出后数据停更,若赖在 Dashboard 屏,
     // 时钟与仪表就冻在旧值上误导用户;回退 Muted 保留"从未/不再收到仪表盘
     // 数据"时的旧语义兜底。
@@ -117,8 +105,7 @@ board::Screen compose(const uplink::Snapshot& s, const power::Reading& battery,
     }
     status += " ";
   }
-  status += s.ip[0] ? s.ip : "NO IP";
-  if (s.wifi_up) status += " " + std::to_string(s.rssi) + "DB";
+  status += s.connected ? "BLE " + std::to_string(s.rssi) + "DB" : "ADV";
   screen.status = status;
   return screen;
 }
@@ -144,9 +131,6 @@ extern "C" void app_main() {
     boot.line2 = std::string("#firmware ") + version;
     board::draw(boot);
   }
-  ESP_LOGI(kTag, "Yahamic %s: free %u KB internal, %u KB PSRAM", version,
-           unsigned(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
-           unsigned(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
 
   audio::set_sink([](const uint8_t* opus, size_t size, uint32_t ts_ms, float) {
     uplink::send_audio(opus, size, ts_ms, 0);
@@ -161,17 +145,20 @@ extern "C" void app_main() {
     ESP_LOGI(kTag, "mac: %s", muted ? "muted (capture off)" : "live");
   });
   uplink::start(version);
+  // 放在 BLE 起来之后:内部 RAM 余量要算上控制器与 host。
+  ESP_LOGI(kTag, "Yahamic %s: free %u KB internal, %u KB PSRAM", version,
+           unsigned(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+           unsigned(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
 
   bool key = false;
   bool key_raw = false;
   uint32_t key_changed = 0;
   uint32_t key_down_at = 0;
-  bool hold_fired = false;
   uint32_t next_status = 0;
   uint32_t next_log = 0;
   power::Reading battery;
   std::string shown;  // 上次整屏内容的指纹:变了才整屏重画
-  uint32_t dash_fed_ms = 0;    // 已喂给 board 的 type 7 接收时间戳(只在新包时重喂)
+  uint32_t dash_fed_ms = 0;    // 已喂给 board 的 dashboard 接收时间戳(只在新包时重喂)
   uint32_t next_dash_tick = 0; // Dashboard 屏下一次时钟重绘时刻
   float bars[kSpecBars] = {0};
 
@@ -187,16 +174,10 @@ extern "C" void app_main() {
       key = key_raw;
       if (key) {
         key_down_at = now;
-        hold_fired = false;
-      } else if (!hold_fired && now - key_down_at < kPressMs) {
+      } else if (now - key_down_at < kPressMs) {
         mic::toggle();
         ESP_LOGI(kTag, "key: %s", uplink::muted() ? "muted (capture off)" : "unmuted");
       }
-    }
-    if (key && !hold_fired && now - key_down_at >= kHoldSetupMs) {
-      hold_fired = true;
-      ESP_LOGI(kTag, "key held 5 s: opening Wi-Fi setup");
-      uplink::open_setup();
     }
 
     uplink::Snapshot s = uplink::snapshot();
@@ -208,7 +189,7 @@ extern "C" void app_main() {
     }
     bool board_dump = uplink::consume_dump_request();
     if (board_dump) board::request_screen_dump();
-    // type 7 仪表盘数据:收到新包(接收时间戳变化)才转换并喂给 board,
+    // dashboard 仪表盘数据:收到新包(接收时间戳变化)才转换并喂给 board,
     // 时钟基准随每包重置(why 见 board::set_dashboard),重复包不重喂。
     uplink::Dashboard dash = uplink::dashboard();
     if (dash.valid && dash.received_ms != dash_fed_ms) {
@@ -249,9 +230,8 @@ extern "C" void app_main() {
       bool has_cap = audio::capture_stats(avg, mn, mx);
       int32_t rframe = 0, rdma = 0;
       board::render_timing(rframe, rdma);
-      ESP_LOGI(kTag, "%s%s| %s | rssi %d | daemon %s | %s%s | level %.2f | 渲染 %.1f fps(帧 %d.%dms,传屏 %d.%dms) | 采集 %d/%d/%d ms",
-               s.wifi_up ? "wifi " : "no wifi ", s.setup ? "setup " : "", s.ssid, s.rssi,
-               s.daemon[0] ? s.daemon : "-", s.phase, s.muted ? " muted" : "", audio::level(),
+      ESP_LOGI(kTag, "ble %s | rssi %d%s | level %.2f | 渲染 %.1f fps(帧 %d.%dms,传屏 %d.%dms) | 采集 %d/%d/%d ms",
+               s.phase, s.rssi, s.muted ? " | muted" : "", audio::level(),
                float(frames - last_frames) * 1000.0f / kLogEveryMs,
                rframe / 1000, (rframe % 1000) / 100, rdma / 1000, (rdma % 1000) / 100,
                has_cap ? avg : -1, has_cap ? mn : -1, has_cap ? mx : -1);

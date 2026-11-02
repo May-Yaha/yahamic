@@ -348,8 +348,8 @@ void init_screen(Board& b) {
   esp_lcd_panel_io_callbacks_t callbacks = {};
   callbacks.on_color_trans_done = on_trans_done;
   ESP_ERROR_CHECK(esp_lcd_panel_io_register_event_callbacks(b.panel_io, &callbacks, nullptr));
-  // 创建 8 个状态的 LVGL screen 对象(boot/dash/muted/searching/joining/
-  // nowifi/setup/live,见 board_screen.cpp)。开机黑屏由 LVGL screen 背景负责,
+  // 创建 6 个状态的 LVGL screen 对象(boot/dash/muted/searching/pairing/
+  // live,见 board_screen.cpp)。开机黑屏由 LVGL screen 背景负责,
   // 不再经旧画布 blit。
   screens::init();
 }
