@@ -28,10 +28,11 @@ private func deviceName(_ id: AudioDeviceID) -> String {
     return name.pointee as String
 }
 
-private func outputStreamCount(_ id: AudioDeviceID) -> Int {
+private func outputStreamCount(_ id: AudioDeviceID,
+                               scope: AudioObjectPropertyScope = kAudioDevicePropertyScopeOutput) -> Int {
     var address = AudioObjectPropertyAddress(
         mSelector: kAudioDevicePropertyStreams,
-        mScope: kAudioDevicePropertyScopeOutput,
+        mScope: scope,
         mElement: kAudioObjectPropertyElementMain)
     var size: UInt32 = 0
     guard AudioObjectGetPropertyDataSize(id, &address, 0, nil, &size) == noErr, size > 0 else {
@@ -57,7 +58,7 @@ private func nominalRate(_ id: AudioDeviceID) -> Double {
     return rate > 0 ? rate : 48000
 }
 
-public func outputDevices() -> [OutputDevice] {
+private func allDeviceIDs() -> [AudioDeviceID] {
     var address = AudioObjectPropertyAddress(
         mSelector: kAudioHardwarePropertyDevices,
         mScope: kAudioObjectPropertyScopeGlobal,
@@ -72,6 +73,10 @@ public func outputDevices() -> [OutputDevice] {
         AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &ids) == noErr
     else { return [] }
     return ids
+}
+
+public func outputDevices() -> [OutputDevice] {
+    allDeviceIDs()
         .map { id in
             OutputDevice(id: id, name: deviceName(id), sampleRate: nominalRate(id),
                          outputStreams: outputStreamCount(id))
@@ -86,6 +91,38 @@ public func findOutputDevice(named needle: String) -> OutputDevice? {
         return exact
     }
     return devices.first { $0.name.range(of: needle, options: .caseInsensitive) != nil }
+}
+
+// 系统默认输入设备:听写类输入法(微信输入法只认它)从这里取麦克风。
+private func defaultInputAddress() -> AudioObjectPropertyAddress {
+    AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDefaultInputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain)
+}
+
+public func defaultInputName() -> String? {
+    var address = defaultInputAddress()
+    var id = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    guard AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &id) == noErr,
+        id != 0
+    else { return nil }
+    return deviceName(id)
+}
+
+/// 按名字(精确,大小写不敏感)把有输入流的设备设为系统默认输入。
+@discardableResult
+public func setDefaultInput(named name: String) -> Bool {
+    guard var id = allDeviceIDs().first(where: {
+        outputStreamCount($0, scope: kAudioDevicePropertyScopeInput) > 0
+            && deviceName($0).caseInsensitiveCompare(name) == .orderedSame
+    }) else { return false }
+    var address = defaultInputAddress()
+    return AudioObjectSetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject), &address, 0, nil,
+        UInt32(MemoryLayout<AudioDeviceID>.size), &id) == noErr
 }
 
 /// 监听设备列表与(当前出口设备的)采样率变化,回调在主队列。

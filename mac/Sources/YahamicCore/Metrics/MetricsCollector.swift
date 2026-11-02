@@ -2,8 +2,8 @@ import Foundation
 import IOKit
 
 // MetricsCollector:Mac 端系统/外设指标采集器,供 YahamicCore 的仪表盘上报链路
-// 以 2~5s(建议 3s)的周期按需调用 sample(),结果通过 type 7 帧下发到设备屏。
-// (已接线:HomeModel 与 yahamicd 每 3s 采样一次,经 Uplink.sendDashboard 下发)
+// 以 2~5s(建议 3s)的周期按需调用 sample(),结果通过 dashboard 特征下发到设备屏。
+// (已接线:HomeModel 每 3s 采样一次,经 Uplink.sendDashboard 下发)
 // 只依赖系统框架(Foundation/IOKit),Package.swift 不需要新增依赖。
 
 /// 一次采样的结果快照。电量取值 0~100,255 为「未知」哨兵:
@@ -49,11 +49,12 @@ public final class MetricsCollector: @unchecked Sendable {
     /// 按需采样一次。首次调用时 CPU 无「上一次」可比,返回 0(而不是用
     /// 开机累计平均值误导),从第二次调用起返回真实区间占用率。
     public func sample() -> MetricsSnapshot {
-        MetricsSnapshot(
+        let batteries = hidBatteries()
+        return MetricsSnapshot(
             cpuPercent: sampleCPU(),
             memoryPercent: sampleMemory(),
-            mouseBattery: batteryPercent(productName: "Yaha的Magic Mouse"),
-            keyboardBattery: batteryPercent(productName: "Yaha-Keyboard")
+            mouseBattery: batteries.mouse,
+            keyboardBattery: batteries.keyboard
         )
     }
 
@@ -129,33 +130,41 @@ public final class MetricsCollector: @unchecked Sendable {
 
     // MARK: - 蓝牙 HID 电量
 
-    /// 匹配 AppleDeviceManagementHIDEventService(Apple 自家键鼠走这个
-    /// HID 事件服务进 IORegistry),遍历服务节点,按 'Product' 字符串找到
-    /// 目标设备后读 'BatteryPercent'。设备休眠、未配对或键缺失时返回 255。
-    private func batteryPercent(productName: String) -> UInt8 {
+    /// 遍历 AppleDeviceManagementHIDEventService(蓝牙键鼠走这个 HID 事件服务进 IORegistry),
+    /// 读带 'BatteryPercent' 的节点,按 'Product' 名字归类鼠标/键盘;取不到为 255。
+    /// ponytail: 按名字关键词归类(Magic Mouse / Yaha-Mouse / Magic Keyboard / HHKB 都能命中),
+    /// 改名成不含关键词的设备会归不进去;需要时改成读父节点 IOHIDDevice 的 usage(Generic Desktop 2/6)。
+    /// 部分第三方键盘(如 HHKB)不向 macOS 上报电量,该环恒为 "--"。
+    static func classify(_ product: String) -> (mouse: Bool, keyboard: Bool) {
+        let name = product.lowercased()
+        let mouse = ["mouse", "trackpad", "鼠标", "触控板"].contains { name.contains($0) }
+        let keyboard = !mouse && ["keyboard", "hhkb", "键盘"].contains { name.contains($0) }
+        return (mouse, keyboard)
+    }
+
+    private func hidBatteries() -> (mouse: UInt8, keyboard: UInt8) {
+        var result: (mouse: UInt8, keyboard: UInt8) = (255, 255)
         var iter: io_iterator_t = 0
         guard IOServiceGetMatchingServices(
             kIOMainPortDefault,
             IOServiceMatching("AppleDeviceManagementHIDEventService"),
             &iter) == KERN_SUCCESS
-        else { return 255 }
+        else { return result }
         defer { IOObjectRelease(iter) }
 
         while case let service = IOIteratorNext(iter), service != 0 {
             defer { IOObjectRelease(service) }
-            // 先按 Product 名过滤,再取 BatteryPercent:一个 Mac 上可能同时
-            // 挂着多个 HID 服务(鼠标/键盘/触控板),不能用「第一个有电量的」。
             guard let product = IORegistryEntryCreateCFProperty(
                 service, "Product" as CFString, kCFAllocatorDefault, 0)?
                 .takeRetainedValue() as? String,
-                product == productName
-            else { continue }
-            guard let battery = IORegistryEntryCreateCFProperty(
+                let battery = IORegistryEntryCreateCFProperty(
                 service, "BatteryPercent" as CFString, kCFAllocatorDefault, 0)?
-                .takeRetainedValue() as? NSNumber
-            else { return 255 }  // 设备在但电量键缺失(休眠中常见),按未知处理
-            return battery.uint8Value
+                .takeRetainedValue() as? NSNumber  // 休眠中常缺这个键,按未知处理
+            else { continue }
+            let kind = Self.classify(product)
+            if kind.mouse, result.mouse == 255 { result.mouse = battery.uint8Value }
+            if kind.keyboard, result.keyboard == 255 { result.keyboard = battery.uint8Value }
         }
-        return 255
+        return result
     }
 }

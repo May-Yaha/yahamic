@@ -60,14 +60,14 @@ extension HomeModel {
         if mic.isOnline {
             let s = mic.state
             device["name"] = s.deviceName
-            device["address"] = s.address
+            device["rssi"] = s.rssi
             device["muted"] = s.muted
             device["levelDb"] = s.levelDb
             device["framesPerSecond"] = s.framesPerSecond
             device["bufferMs"] = s.bufferMs
             device["overflows"] = s.overflows
             device["underruns"] = s.underruns
-            // 接收侧本地统计(乱序/过旧丢弃 + 跳号缺口),非设备遥测透传。
+            // 接收侧本地统计(seq 跳号缺口),非设备遥测透传。
             device["droppedFrames"] = s.droppedFrames
             // 分阶段诊断计数:定位零帧断点用,各字段口径见 Uplink.Diag。
             device["diag"] = Self.diagFields(s.diag)
@@ -81,18 +81,12 @@ extension HomeModel {
         [
             "rxPackets": d.rxPackets,
             "rxInvalid": d.rxInvalid,
-            "rxIgnoredInactive": d.rxIgnoredInactive,
-            "rxBadTag": d.rxBadTag,
             "audioPackets": d.audioPackets,
             "decodeErrors": d.decodeErrors,
             "decodedFrames": d.decodedFrames,
             "enqueuedFrames": d.enqueuedFrames,
             "outputFrames": d.outputFrames,
-            "dropLate": d.dropLate,
-            "dropDuplicate": d.dropDuplicate,
             "dropJump": d.dropJump,
-            "dropReset": d.dropReset,
-            "rehandshakes": d.rehandshakes,
         ]
     }
 }

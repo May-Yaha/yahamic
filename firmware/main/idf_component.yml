@@ -2,13 +2,7 @@ dependencies:
   idf: ">=6.1"
   # 这块板的屏幕驱动,与 XiaoZhi v2.5.2 / OpenCharm 相同(触摸不用,未引)。
   espressif/esp_lcd_co5300: "^2.1.0"
-  # Wi-Fi 配网(热点 + 配网页)同 XiaoZhi v2.5.2;我们的副本在 components/,页面是中文的。
-  78/esp-wifi-connect:
-    version: "~3.3.1"
-    override_path: "../components/esp-wifi-connect"
-  # 在局域网里找 Mac 上的 yahamicd(_yahamic._tcp),同 OpenCharm 找 charmd 的方式。
-  espressif/mdns: "^1.8.0"
-  # ES7210 麦克风编解码器驱动(音频走 PCM 直传,不需要 esp-sr/Opus)。
+  # ES7210 麦克风编解码器驱动(不需要 esp-sr)。
   espressif/esp_codec_dev: "~1.6.2"
   # Opus 编码(同 xiaozhi-esp32):32 kbps 语音,带宽从裸 PCM 的 256 kbps 降到 32 kbps。
   espressif/esp_audio_codec: "~2.5.0"

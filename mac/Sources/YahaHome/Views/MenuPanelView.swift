@@ -1,7 +1,7 @@
 import SwiftUI
 import YahamicCore
 
-// 菜单栏下拉面板:设备卡片(按设备分区,现在只有麦克风)、设置、日志。
+// 菜单栏下拉面板,控制中心风格:设备模块(现在只有麦克风)、开关小方块、输出、日志。
 struct MenuPanelView: View {
     @EnvironmentObject private var model: HomeModel
     @State private var showLogs = false
@@ -23,24 +23,19 @@ struct MenuPanelView: View {
             }
             MicCard(device: model.mic, audioError: model.audioError,
                     pttEnabled: model.pttEnabled, fnAvailable: model.fnAvailable,
+                    talkKeyName: model.talkKey.title,
                     onToggleMute: model.toggleMute)
-            sectionLabel("设置")
             settings
             footer
         }
         .padding(PanelSpacing.cardPadding)
-        .frame(width: 330)
+        .frame(width: 320)
         // 权限卡片显隐过渡:snappy 可打断,不阻塞操作
         .animation(.snappy(duration: 0.25), value: model.needsAccessibility)
         .animation(.snappy(duration: 0.25), value: model.blackHoleMissing)
         .onAppear {
             model.refreshOutputs()
         }
-    }
-
-    /// caption 小节标签:分组手段,靠标签 + 留白表达层级。
-    private func sectionLabel(_ title: String) -> some View {
-        Text(title).font(.caption).foregroundStyle(.secondary)
     }
 
     private var header: some View {
@@ -57,45 +52,96 @@ struct MenuPanelView: View {
     }
 
     private var settings: some View {
-        VStack(alignment: .leading, spacing: PanelSpacing.row) {
-            Toggle(isOn: $model.pttEnabled) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("按住 Fn 讲话")
-                    Text(model.pttEnabled
-                         ? (model.fnAvailable ? "平时静音,按住 Fn 才送声" : "等待辅助功能权限…")
-                         : "关闭 = 麦克风常开")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: PanelSpacing.section) {
+            HStack(spacing: PanelSpacing.section) {
+                Toggle("按住讲话", isOn: $model.pttEnabled)
+                    .toggleStyle(TileToggleStyle(
+                        symbol: "hand.tap.fill",
+                        detail: model.pttEnabled ? (model.fnAvailable ? "按住才送声" : "等待权限…") : "麦克风常开"))
+                Toggle("开机自启", isOn: Binding(
+                    get: { model.launchAtLogin },
+                    set: { model.setLaunchAtLogin($0) }))
+                    .toggleStyle(TileToggleStyle(symbol: "power"))
             }
-            .toggleStyle(.switch)
-            if model.pttEnabled && !model.fnAvailable {
-                Button("打开辅助功能设置…") { model.openAccessibilitySettings() }
-                    .controlSize(.small)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            if model.pttEnabled && (!model.fnAvailable || !model.listenPermission.granted) {
+                VStack(alignment: .leading, spacing: PanelSpacing.row) {
+                    ListenPermissionRow(permission: model.listenPermission,
+                                        onRequest: model.requestListenPermission,
+                                        onOpen: model.openListenPermissionSettings)
+                    if !model.fnAvailable {
+                        Button("打开辅助功能设置…") { model.openAccessibilitySettings() }
+                            .controlSize(.small)
+                    }
+                }
+                .controlTile()
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
             if model.pttEnabled {
-                ListenPermissionRow(permission: model.listenPermission,
-                                    onRequest: model.requestListenPermission,
-                                    onOpen: model.openListenPermissionSettings)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                HStack(spacing: PanelSpacing.row) {
+                    CircleIcon(symbol: "keyboard", tint: .accentColor)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("讲话键").font(.subheadline.weight(.medium))
+                        Picker("讲话键", selection: $model.talkKey) {
+                            ForEach(TalkKey.allCases, id: \.self) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                    Spacer(minLength: 0)
+                    Text("HHKB 选右侧键").font(.caption2).foregroundStyle(.tertiary)
+                }
+                .controlTile()
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-
-            Picker("输出到", selection: $model.outputDeviceName) {
-                ForEach(deviceNames, id: \.self) { Text($0).tag($0) }
+            HStack(spacing: PanelSpacing.row) {
+                CircleIcon(symbol: "speaker.wave.2.fill", tint: .accentColor)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("输出到").font(.subheadline.weight(.medium))
+                    Picker("输出到", selection: $model.outputDeviceName) {
+                        ForEach(deviceNames, id: \.self) { Text($0).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                Spacer(minLength: 0)
             }
-            .pickerStyle(.menu)
-
-            PairingRow(code: model.pairingCode, deviceOnline: model.mic.isOnline,
-                       onCopy: model.copyPairingCode, onRegenerate: model.regeneratePairingCode)
-
-            Toggle("开机自启", isOn: Binding(
-                get: { model.launchAtLogin },
-                set: { model.setLaunchAtLogin($0) }))
-                .toggleStyle(.switch)
+            .controlTile()
+            if !model.installedIMEs.isEmpty { imeTile }
         }
-        // 设置区显隐过渡:权限/PTT 状态变化时淡入+顶部移入,可打断
+        // 权限行显隐过渡:淡入+顶部移入,可打断
         .animation(.snappy(duration: 0.25), value: model.pttEnabled)
         .animation(.snappy(duration: 0.25), value: model.fnAvailable)
+        .animation(.snappy(duration: 0.25), value: model.listenPermission.granted)
+    }
+
+    /// 听写输入法一键接入:切系统默认输入 + 打开输入法设置;快捷键只能用户自己设,这里给出要设成什么。
+    private var imeTile: some View {
+        let linked = model.defaultInput == model.outputDeviceName
+        return VStack(alignment: .leading, spacing: PanelSpacing.row) {
+            HStack(spacing: PanelSpacing.row) {
+                CircleIcon(symbol: "character.bubble.fill", tint: linked ? .green : nil)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("听写输入法").font(.subheadline.weight(.medium))
+                    Text("系统输入:\(model.defaultInput)").font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                ForEach(model.installedIMEs, id: \.self) { ime in
+                    Button("接入\(ime.title)") { model.connectIME(ime) }.controlSize(.small)
+                }
+            }
+            if linked {
+                Text("在输入法设置里:麦克风选「\(model.outputDeviceName)」或「跟随系统」,语音输入快捷键设为长按\(model.talkKey.title)")
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let previous = model.previousInput {
+                    Button("还原系统输入为 \(previous)") { model.restoreInput() }.controlSize(.small)
+                }
+            }
+        }
+        .controlTile()
     }
 
     private var deviceNames: [String] {

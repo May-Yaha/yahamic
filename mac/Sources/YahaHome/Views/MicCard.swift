@@ -1,13 +1,13 @@
 import SwiftUI
 import YahamicCore
 
-/// 麦克风设备卡片:状态胶囊、名字、自定义电平条、玻璃静音主按钮。
-/// 面板唯一主角区块:卡片内不再叠 glassEffect,玻璃质感只留给主按钮。
+/// 麦克风模块(控制中心风格):圆形图标即静音开关,右侧信号,下方电平条与提示。
 struct MicCard: View {
     let device: MicDevice
     let audioError: String?
     let pttEnabled: Bool
     let fnAvailable: Bool
+    let talkKeyName: String
     let onToggleMute: () -> Void
 
     /// 状态色四态:音频异常=橙、离线=灰、静音=红、开麦=绿,
@@ -34,33 +34,29 @@ struct MicCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: PanelSpacing.row) {
-                Image(systemName: device.isOnline
-                      ? (device.state.muted ? "mic.slash.fill" : "mic.fill") : "mic.slash")
-                    .font(.system(size: 22))
-                    .foregroundStyle(statusTint.color)
-                    .frame(width: 28)
-                    .contentTransition(.symbolEffect(.replace))
-                    .symbolEffect(.bounce, value: device.state.muted)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: PanelSpacing.row + 2) {
+                // 控制中心式主开关:圆形图标本身就是静音按钮,亮色 = 开麦。
+                Button(action: onToggleMute) {
+                    CircleIcon(symbol: statusIcon,
+                               tint: device.isOnline ? statusTint.color : nil, size: 44)
+                        .symbolEffect(.bounce, value: device.state.muted)
+                }
+                .buttonStyle(.plain)
+                .disabled(!device.isOnline)
+                .help(device.state.muted ? "开麦" : "静音")
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: PanelSpacing.inner) {
-                        Text(device.title).font(.subheadline.weight(.semibold))
-                        statusCapsule
-                        Text(device.kind).font(.caption2).foregroundStyle(.tertiary)
-                    }
-                    Text(device.statusLine).font(.caption).foregroundStyle(.secondary)
-                    if device.isOnline {
-                        Text(device.state.address).font(.caption2).foregroundStyle(.tertiary)
-                    }
+                    Text(device.title).font(.headline)
+                    Text(statusWord).font(.subheadline).foregroundStyle(statusTint.color)
                 }
                 Spacer()
-                // 面板唯一强调元素:玻璃主按钮,着色跟随状态色。
-                Button(device.state.muted ? "开麦" : "静音", action: onToggleMute)
-                    .buttonStyle(.glassProminent)
-                    .tint(statusTint.color)
-                    .controlSize(.regular)
-                    .disabled(!device.isOnline)
+                if device.isOnline {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Label("\(device.state.rssi) dBm", systemImage: "antenna.radiowaves.left.and.right")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        Text(device.kind).font(.caption2).foregroundStyle(.tertiary)
+                    }
+                }
             }
             .animation(.snappy(duration: 0.2), value: statusTint)
             levelBar
@@ -69,28 +65,20 @@ struct MicCard: View {
                     .font(.caption).foregroundStyle(MenuStatusTint.warning.color)
                     .fixedSize(horizontal: false, vertical: true)
                     .transition(.opacity.combined(with: .move(edge: .top)))
-            } else if device.isOnline && pttEnabled && fnAvailable {
-                Text(device.state.muted ? "按住 Fn 键开始讲话" : "松开 Fn 即静音")
-                    .font(.caption2).foregroundStyle(.tertiary)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            } else {
+                Text(hint).font(.caption2).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(PanelSpacing.cardPadding)
-        .background(RoundedRectangle(cornerRadius: PanelSpacing.cardRadius).fill(Color(nsColor: .controlBackgroundColor)))
-        // 卡片内提示行显隐过渡:随权限/PTT 状态淡入+顶部移入,可打断
+        .controlTile()
         .animation(.snappy(duration: 0.25), value: audioError != nil)
-        .animation(.snappy(duration: 0.25), value: device.isOnline && pttEnabled && fnAvailable)
     }
 
-    /// 语义状态胶囊:Capsule 底 = 状态色 12% 淡填充(MenuStatusTint.fill),
-    /// 内容 = 小 SF Symbol + 短词,文字 caption 字重 .medium。
-    private var statusCapsule: some View {
-        Label(statusWord, systemImage: statusIcon)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(statusTint.color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(statusTint.fill))
+    /// 底部一行:离线给连接指引,在线给 Fn 提示,送声时给电平与帧率。
+    private var hint: String {
+        guard device.isOnline else { return device.statusLine }
+        if !device.state.muted { return device.statusLine }
+        return pttEnabled && fnAvailable ? "按住 \(talkKeyName) 开始讲话" : "点左侧图标开麦"
     }
 
     /// 自定义电平条:ZStack 双层 Capsule,底层 .quinary 填充、前景按 levelFraction
