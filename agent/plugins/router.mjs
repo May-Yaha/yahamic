@@ -24,19 +24,21 @@ function allowedCandidates(kind) {
  * candidates remain for each. Verification is workspace-wide, so a failed
  * check reopens every task (same attribution rule as yahaagent).
  */
-export function routeAssignments({ plan, execution, verify, limits }) {
+export function routeAssignments({ plan, execution, verify, limits, codexUsed: codexCounter }) {
+  // history 是跨返工轮次的完整尝试记录；旧黑板只有 results 时退回它。
+  const history = execution?.history ?? execution?.results ?? [];
   const attemptedByTask = new Map();
-  for (const result of execution?.results ?? []) {
+  for (const result of history) {
     const list = attemptedByTask.get(result.taskId) ?? [];
     list.push(result.worker);
     attemptedByTask.set(result.taskId, list);
   }
   const lastStatus = new Map();
-  for (const result of execution?.results ?? []) lastStatus.set(result.taskId, result.status);
+  for (const result of history) lastStatus.set(result.taskId, result.status);
   const verifyFailed = (verify?.checks ?? []).some(check => !check.passed);
   const outstanding = plan.tasks.filter(task => verifyFailed || lastStatus.get(task.id) !== 'completed');
 
-  const codexUsed = (execution?.results ?? []).filter(r => r.worker === 'codex').length;
+  const codexUsed = codexCounter ?? history.filter(r => r.worker === 'codex').length;
   const hardNeeded = outstanding.filter(t => t.kind === 'hard').length;
   if (hardNeeded > limits.maxCodexExecutions - codexUsed) {
     return { terminal: { status: 'blocked', reason: `Codex 执行预算不足：还需 ${hardNeeded} 个 hard 任务，配额 ${limits.maxCodexExecutions}、已用 ${codexUsed}。` } };
@@ -56,9 +58,11 @@ export function routeAssignments({ plan, execution, verify, limits }) {
         return { terminal: { status: 'blocked', reason: `任务 ${task.id} 的候选只剩 Codex 但预算已耗尽。` } };
       }
     }
+    // 非 hard 任务保留 Codex 候选就占一份预算（模型可能选它），后续任务不能再超额提供。
+    if (task.kind !== 'hard' && candidates.includes('codex')) codexReserved += 1;
     routed.push({ task, candidates });
   }
-  return { routed, rework: (execution?.results ?? []).length > 0 };
+  return { routed, rework: history.length > 0 };
 }
 
 export function createRouter(params) {
@@ -66,9 +70,9 @@ export function createRouter(params) {
   const llmImpl = params.llmImpl ?? askLLM;
   const jevImpl = params.jevImpl ?? selectWithJev;
   return {
-    async execute({ read, config, signal, tick, emit }) {
+    async execute({ read, config, signal, tick, counter, emit }) {
       const plan = read('plan');
-      const routed = routeAssignments({ plan, execution: read('execution'), verify: read('verify'), limits: config.limits });
+      const routed = routeAssignments({ plan, execution: read('execution'), verify: read('verify'), limits: config.limits, codexUsed: counter('codex-calls') ?? undefined });
       if (routed.terminal) return { outputs: { assignments: { tasks: [], assignments: [] } }, terminal: routed.terminal };
 
       let chosen = routed.routed.map(({ task, candidates }) => ({ taskId: task.id, worker: candidates[0], reason: '默认候选' }));
@@ -104,11 +108,15 @@ ${(() => { const verify = read('verify'); return verify?.checks?.length ? `上�
             if (!value || !Array.isArray(value.assignments)) throw new Error('缺少 assignments');
             const allowed = new Map(routed.routed.map(({ task, candidates }) => [task.id, candidates]));
             if (value.assignments.length !== routed.routed.length) throw new Error('assignments 数量不匹配');
-            return value.assignments.map(item => {
-              if (typeof item?.taskId !== 'string' || !allowed.has(item.taskId)) throw new Error(`未知任务 ${item.taskId}`);
+            const byId = new Map();
+            for (const item of value.assignments) {
+              if (typeof item?.taskId !== 'string' || !allowed.has(item.taskId)) throw new Error(`未知任务 ${item?.taskId}`);
+              if (byId.has(item.taskId)) throw new Error(`任务 ${item.taskId} 重复`);
               if (!allowed.get(item.taskId).includes(item.worker)) throw new Error(`任务 ${item.taskId} 的 worker ${item.worker} 不在允许候选内`);
-              return { taskId: item.taskId, worker: item.worker, reason: typeof item.reason === 'string' ? item.reason : '' };
-            });
+              byId.set(item.taskId, { taskId: item.taskId, worker: item.worker, reason: typeof item.reason === 'string' ? item.reason : '' });
+            }
+            // 数量一致 + 无重复 + 无未知 ⇒ 恰好覆盖；顺序按计划原序，不信模型的排序。
+            return routed.routed.map(({ task }) => byId.get(task.id));
           });
         } catch (error) {
           degraded = error?.code ?? 'LLM_ERROR';

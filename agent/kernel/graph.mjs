@@ -29,6 +29,17 @@ function positiveInt(value, field) {
   return value;
 }
 
+/** A predicate is { ns, path, equals } or { all: [...] } / { any: [...] } of predicates. */
+function validWhen(w, producers) {
+  if (!isPlainObject(w)) return false;
+  for (const key of ['all', 'any']) {
+    if (key in w) return Array.isArray(w[key]) && w[key].length > 0 && w[key].every(item => validWhen(item, producers));
+  }
+  return NS.test(String(w.ns)) && producers.has(w.ns)
+    && Array.isArray(w.path) && w.path.length > 0 && w.path.every(p => typeof p === 'string')
+    && 'equals' in w;
+}
+
 /** Validate and freeze a graph definition against the plugin registry. */
 export function loadGraph(definition, registry) {
   if (!isPlainObject(definition)) throw new GraphError('Graph definition must be an object.', 'GRAPH_INVALID_SHAPE');
@@ -121,19 +132,16 @@ export function loadGraph(definition, registry) {
     seenEdges.add(key);
     if (edge.from === edge.to) throw new GraphError(`Self edge is not allowed: ${key}`, 'GRAPH_SELF_EDGE');
     if (edge.backedge) {
-      if (!isPlainObject(edge.guard) || !NS.test(String(edge.guard.counter)) || !(edge.guard.counter in counters)) {
+      if (!isPlainObject(edge.guard) || !NS.test(String(edge.guard.counter)) || !Object.hasOwn(counters, edge.guard.counter)) {
         throw new GraphError(`Backedge ${key} needs a guard referencing a declared counter.`, 'GRAPH_UNGUARDED_BACKEDGE');
       }
       positiveInt(edge.guard.max, `Backedge ${key} guard.max`);
       let when = null;
       if (edge.guard.when !== undefined) {
-        const w = edge.guard.when;
-        if (!isPlainObject(w) || !NS.test(String(w.ns)) || !producers.has(w.ns)
-          || !Array.isArray(w.path) || w.path.length === 0 || w.path.some(p => typeof p !== 'string')
-          || !('equals' in w)) {
+        if (!validWhen(edge.guard.when, producers)) {
           throw new GraphError(`Backedge ${key} has an invalid when predicate.`, 'GRAPH_INVALID_GUARD_WHEN');
         }
-        when = w;
+        when = edge.guard.when;
       }
       backedgeOut.get(edge.from).push({ to: edge.to, guard: edge.guard, when });
     } else {
@@ -162,9 +170,7 @@ export function loadGraph(definition, registry) {
   let outcome = null;
   if (definition.outcome !== undefined) {
     const o = definition.outcome;
-    if (!isPlainObject(o) || !isPlainObject(o.when) || !producers.has(o.when.ns)
-      || !Array.isArray(o.when.path) || o.when.path.length === 0 || o.when.path.some(p => typeof p !== 'string')
-      || !('equals' in o.when)
+    if (!isPlainObject(o) || !validWhen(o.when, producers)
       || !['completed', 'blocked', 'needs_input'].includes(o.then)
       || !['completed', 'blocked', 'needs_input'].includes(o.otherwise)) {
       throw new GraphError('Graph outcome declaration is invalid.', 'GRAPH_INVALID_OUTCOME');
@@ -200,6 +206,8 @@ function isCancelError(error) {
 }
 
 function whenHolds(blackboard, when) {
+  if (Array.isArray(when.all)) return when.all.every(item => whenHolds(blackboard, item));
+  if (Array.isArray(when.any)) return when.any.some(item => whenHolds(blackboard, item));
   let value = blackboard.read(when.ns);
   for (const key of when.path) {
     if (value === null || typeof value !== 'object') return false;
@@ -227,6 +235,7 @@ export async function runGraph({ graph, registry, blackboard, ctx = {}, concurre
     run: blackboard.snapshot().run,
     read: (ns) => blackboard.read(ns),
     tick: (name) => blackboard.tick(name, { node: node.id }),
+    counter: (name) => blackboard.counter(name),
     signal,
     emit,
     ...ctx,
@@ -267,8 +276,9 @@ export async function runGraph({ graph, registry, blackboard, ctx = {}, concurre
   async function runNode(node) {
     states.set(node.id, RUNNING);
     emit({ type: 'node_started', node: node.id, plugin: node.plugin, attempt: attempts.get(node.id) + 1 });
-    const instance = registry.create(node.plugin, node.params, { ...ctx, node: { id: node.id, type: node.type } });
     try {
+      // A throwing factory is a node failure like any other: retries/fallback apply.
+      const instance = registry.create(node.plugin, node.params, { ...ctx, node: { id: node.id, type: node.type } });
       const result = await instance.execute(execCtx(node));
       if (result?.terminal) {
         if (!['needs_input', 'blocked'].includes(result.terminal.status)) {
@@ -331,7 +341,11 @@ export async function runGraph({ graph, registry, blackboard, ctx = {}, concurre
         continue;
       }
 
-      await Promise.all(batch.map(id => runNode(graph.nodes.get(id))));
+      // allSettled: on cancel, wait for every sibling to stop before reporting
+      // interrupted, so no node keeps writing to the blackboard afterwards.
+      const settled = await Promise.allSettled(batch.map(id => runNode(graph.nodes.get(id))));
+      const rejected = settled.find(result => result.status === 'rejected');
+      if (rejected) throw rejected.reason;
 
       // Evaluate guarded backedges from freshly finished nodes. A backedge
       // fires only when its declared condition (when) holds AND the counter

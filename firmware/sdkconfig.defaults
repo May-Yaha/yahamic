@@ -48,3 +48,8 @@ CONFIG_LV_DRAW_BUF_ALIGN=64
 # tools/make_fonts.sh 生成的字体是压缩格式(bitmap_format=1,省 flash),不开此项
 # 字形会渲染成碎线段(真机实测)。
 CONFIG_LV_USE_FONT_COMPRESSED=y
+
+# 协议 v2 的会话加密是 ChaCha20-Poly1305(PSA):IDF 的 esp_config.h 在这两项关闭时
+# 会把 PSA_WANT_ALG_CHACHA20_POLY1305 去掉(默认 n),开机自检会报 "seal" 失败。
+CONFIG_MBEDTLS_CHACHA20_C=y
+CONFIG_MBEDTLS_CHACHAPOLY_C=y

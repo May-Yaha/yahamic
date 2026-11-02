@@ -22,15 +22,21 @@ export function redact(value, secret) {
   return value;
 }
 
-/** Minimal .env loader: existing environment always wins, values never re-parsed. */
+/**
+ * Minimal .env loader: existing environment always wins, values never re-parsed.
+ * Accepts `export KEY=...`; quoted values are taken verbatim, unquoted values
+ * drop a trailing ` # comment` and surrounding whitespace.
+ */
 export function loadDotEnv(file = path.join(AGENT_DIR, '..', '.env')) {
   if (!fs.existsSync(file)) return [];
   const loaded = [];
   for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
     if (!match || line.trim().startsWith('#')) continue;
-    const value = match[2].replace(/^["']|["']$/g, '');
-    if (!(match[1] in process.env)) process.env[match[1]] = value;
+    const raw = match[2].trim();
+    const quoted = raw.match(/^(["'])(.*)\1$/);
+    const value = quoted ? quoted[2] : raw.replace(/\s+#.*$/, '').trim();
+    if (!Object.hasOwn(process.env, match[1])) process.env[match[1]] = value;
     loaded.push(match[1]);
   }
   return loaded;
@@ -84,6 +90,8 @@ export function loadConfig(configPath) {
   // parent of agent/), matching how "../yahallmwiki" reads naturally.
   const repoRoot = path.resolve(AGENT_DIR, '..', '..');
   const absolute = (value) => (typeof value === 'string' && value && !path.isAbsolute(value) ? path.resolve(repoRoot, value) : value);
+  // Bare command names ("codex", "pi") stay PATH lookups; only paths are resolved.
+  const commandPath = (value) => (typeof value === 'string' && value.includes('/') ? absolute(value) : value);
   const wiki = config.wiki?.repository
     ? {
         ...config.wiki,
@@ -97,8 +105,8 @@ export function loadConfig(configPath) {
     ...config,
     workspace,
     agentDir: AGENT_DIR,
-    codex: { ...config.codex, command: absolute(config.codex.command) },
-    pi: { ...config.pi, command: absolute(config.pi.command) },
+    codex: { ...config.codex, command: commandPath(config.codex.command) },
+    pi: { ...config.pi, command: commandPath(config.pi.command) },
     wiki,
     llm: {
       ...config.llm,

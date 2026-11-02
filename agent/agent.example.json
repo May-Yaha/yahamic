@@ -26,13 +26,14 @@
   },
   "pi": {
     "command": "../yahaagent/node_modules/.bin/pi",
-    "_comment": "相对路径相对 agent/ 目录解析;复用 yahaagent 已安装的 Pi 0.87.1",
+    "_comment": "相对路径相对 yahamic 仓库根目录解析;复用 yahaagent 已安装的 Pi 0.87.1",
     "glm": { "provider": "zai-coding-cn", "model": "glm-5.3", "apiKeyEnv": "ZAI_CODING_CN_API_KEY", "timeoutMs": 1800000 },
     "kimi": { "provider": "kimi-coding", "model": "k3", "apiKeyEnv": "KIMI_API_KEY", "timeoutMs": 1800000 }
   },
   "verify": {
     "commands": [
-      { "command": "swift", "args": ["build"], "cwd": "mac", "timeoutMs": 600000 }
+      { "command": "swift", "args": ["build"], "cwd": "mac", "timeoutMs": 600000 },
+      { "command": "swift", "args": ["test"], "cwd": "mac", "timeoutMs": 600000 }
     ]
   },
   "wiki": {

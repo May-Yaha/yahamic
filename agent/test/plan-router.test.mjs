@@ -21,6 +21,7 @@ function execCtx(reads, { config } = {}) {
     config: config ?? { llm: {}, limits, router: { jev: {} } },
     signal: null,
     tick: async () => {},
+    counter: () => null,
     emit: () => {},
   };
 }
@@ -104,4 +105,30 @@ test('router glm path validates the worker against per-task candidates; failure 
   const brokenRouter = createRouter({ provider: 'glm', llmImpl: async () => { throw Object.assign(new Error('down'), { code: 'LLM_NETWORK_ERROR' }); } });
   const broken = await brokenRouter.execute(execCtx({ plan }));
   assert.equal(broken.outputs.assignments.degraded, 'LLM_NETWORK_ERROR');
+});
+
+test('router LLM output must cover plan ids exactly once; order follows the plan; codex reservation counts', async () => {
+  const twoSimple = { summary: 's', tasks: [plan.tasks[0], { ...plan.tasks[0], id: 'a2' }] };
+  // max=1, no hard: the first simple task keeps codex as a candidate and
+  // reserves it, so the second one must not be offered codex too.
+  const routed = routeAssignments({ plan: twoSimple, execution: null, verify: null, limits });
+  assert.deepEqual(routed.routed.map(r => r.candidates), [['glm', 'kimi', 'codex'], ['glm', 'kimi']]);
+
+  const reordered = '{"assignments":[{"taskId":"c","worker":"codex"},{"taskId":"b","worker":"kimi"},{"taskId":"a","worker":"glm"}]}';
+  const ordered = await createRouter({ provider: 'glm', llmImpl: async () => ({ text: reordered }) }).execute(execCtx({ plan }));
+  assert.equal(ordered.outputs.assignments.degraded, undefined);
+  assert.deepEqual(ordered.outputs.assignments.assignments.map(a => a.taskId), ['a', 'b', 'c']);
+
+  const duplicate = '{"assignments":[{"taskId":"a","worker":"glm"},{"taskId":"a","worker":"glm"},{"taskId":"c","worker":"codex"}]}';
+  const dup = await createRouter({ provider: 'glm', llmImpl: async () => ({ text: duplicate }) }).execute(execCtx({ plan }));
+  assert.ok(dup.outputs.assignments.degraded);
+  assert.deepEqual(dup.outputs.assignments.assignments.map(a => a.taskId), ['a', 'b', 'c']);
+
+  // history (append-only) is what the router rotates on, not the latest round.
+  const rotated = routeAssignments({
+    plan: { tasks: [plan.tasks[0]] },
+    execution: { results: [], history: [{ taskId: 'a', worker: 'glm', status: 'failed' }, { taskId: 'a', worker: 'kimi', status: 'failed' }] },
+    verify: null, limits, codexUsed: 0,
+  });
+  assert.deepEqual(rotated.routed[0].candidates, ['codex']);
 });

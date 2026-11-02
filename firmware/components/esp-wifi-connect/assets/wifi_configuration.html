@@ -226,15 +226,15 @@
       </section>
 
       <section id="token-card" hidden>
-        <h2>配对码(可选)</h2>
+        <h2>配对码(必填)</h2>
         <form id="token-form">
           <label for="token"
-            >与 Mac 上 <code>yahamicd --token</code> 一致的配对码,留空则不校验</label
+            >填 Mac 上「Yaha 家居」面板显示的配对码(8–63 位),不填设备不会连接</label
           >
           <div class="row">
-            <input type="text" id="token" autocomplete="off" spellcheck="false" />
+            <input type="text" id="token" autocomplete="off" spellcheck="false"
+              required minlength="8" maxlength="63" pattern="[!-~]{8,63}" />
             <button type="submit" class="ghost" id="token-save">保存</button>
-            <button type="button" class="ghost" id="token-clear">清除</button>
           </div>
           <p class="saved-note" id="token-note"></p>
           <p class="error" id="token-error"></p>
@@ -385,7 +385,7 @@
           $("token").value = data.ota_url || "";
           $("token-note").textContent = data.ota_url
             ? "已保存配对码。"
-            : "未设置:设备与 Mac 互相不做校验。";
+            : "还没有配对码:设备不会连接 Mac。";
         } catch {
           // 没有这一项页面也照常工作。
         }
@@ -403,9 +403,7 @@
           const data = await response.json();
           if (!data.success) throw new Error(data.error || "");
           $("token").value = value;
-          $("token-note").textContent = value
-            ? "已保存配对码。"
-            : "已清除:不做校验。";
+          $("token-note").textContent = "已保存配对码。";
         } catch {
           $("token-error").textContent = "没有保存成功,请重试。";
         } finally {
@@ -415,9 +413,13 @@
 
       $("token-form").addEventListener("submit", (event) => {
         event.preventDefault();
-        saveToken($("token").value.trim());
+        const value = $("token").value.trim();
+        if (!/^[!-~]{8,63}$/.test(value)) {
+          $("token-error").textContent = "配对码需 8–63 位,不含空格。";
+          return;
+        }
+        saveToken(value);
       });
-      $("token-clear").addEventListener("click", () => saveToken(""));
 
       scan();
       loadSaved();

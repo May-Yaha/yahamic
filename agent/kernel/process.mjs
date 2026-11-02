@@ -9,6 +9,38 @@ const OUTPUT_LIMIT_BYTES = 8 * 1024 * 1024;
 const STREAM_TAIL_BYTES = 64 * 1024;
 const KILL_GRACE_MS = 250;
 const MAX_TIMEOUT_MS = 2_147_483_647;
+const FAILURE_TAIL_BYTES = 4096;
+
+// 子进程只拿到这份白名单环境：凭证一律不下发（verify / doctor 用）。
+const ENV_ALLOWLIST = [
+  'PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'USER', 'SHELL', 'TERM', 'DEVELOPER_DIR',
+  'CODEX_HOME', // doctor 的 `codex login status` 要读到同一份登录目录（路径，不是凭证）
+  'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
+];
+
+export function allowlistedEnv(source = process.env) {
+  return Object.fromEntries(ENV_ALLOWLIST.filter(name => source[name] !== undefined).map(name => [name, source[name]]));
+}
+
+// Detached children own their process group and would outlive us; kill every
+// live group synchronously when this process exits (exit handlers cannot wait).
+const liveGroups = new Set();
+let exitHookInstalled = false;
+function trackGroup(pid) {
+  if (!exitHookInstalled) {
+    exitHookInstalled = true;
+    process.on('exit', () => {
+      for (const group of liveGroups) {
+        try { process.kill(-group, 'SIGKILL'); } catch { /* already gone */ }
+      }
+    });
+  }
+  liveGroups.add(pid);
+}
+
+function tailText(buffer) {
+  return buffer.subarray(-FAILURE_TAIL_BYTES).toString('utf8');
+}
 
 function appendTail(tail, chunk) {
   if (chunk.length >= STREAM_TAIL_BYTES) return Buffer.from(chunk.subarray(-STREAM_TAIL_BYTES));
@@ -46,6 +78,7 @@ export function runProcess({ command, args = [], cwd, input = '', env = process.
       reject(processError('Could not start process.', 'PROCESS_SPAWN_FAILED', { causeCode: error.code }));
       return;
     }
+    if (grouped && child.pid) trackGroup(child.pid);
 
     const stdout = [];
     const stderr = [];
@@ -72,7 +105,11 @@ export function runProcess({ command, args = [], cwd, input = '', env = process.
       if (failure) {
         reject(failure);
       } else if (exitCode !== 0) {
-        reject(processError('Process exited unsuccessfully.', 'PROCESS_EXIT_FAILED', { exitCode, signal: exitSignal }));
+        reject(processError('Process exited unsuccessfully.', 'PROCESS_EXIT_FAILED', {
+          exitCode, signal: exitSignal,
+          stdout: tailText(streaming ? stdoutTail : Buffer.concat(stdout)),
+          stderr: tailText(streaming ? stderrTail : Buffer.concat(stderr)),
+        }));
       } else {
         resolve({ stdout: (streaming ? stdoutTail : Buffer.concat(stdout)).toString('utf8'), stderr: (streaming ? stderrTail : Buffer.concat(stderr)).toString('utf8'), exitCode });
       }
@@ -181,6 +218,7 @@ export function runProcess({ command, args = [], cwd, input = '', env = process.
     });
     child.on('close', (code, signal) => {
       closed = true;
+      liveGroups.delete(child.pid);
       exitCode = code;
       exitSignal = signal;
       for (const lines of [stdoutLines, stderrLines]) {

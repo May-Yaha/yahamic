@@ -16,10 +16,10 @@ import { fixturePlugins } from './fixtures.mjs';
 export function createOverrideRegistry(base, overrides = {}) {
   return {
     register: base.register,
-    has: (id) => base.has(id) || id in overrides,
+    has: (id) => base.has(id) || Object.hasOwn(overrides, id),
     ids: () => [...new Set([...base.ids(), ...Object.keys(overrides)])],
     create(id, params, ctx) {
-      if (id in overrides) {
+      if (Object.hasOwn(overrides, id)) {
         const override = overrides[id];
         // Accept either a factory (params) => instance or a ready instance —
         // tests usually want to inject preconfigured fixtures directly.

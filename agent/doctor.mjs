@@ -3,7 +3,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { runProcess } from './kernel/process.mjs';
+import { runProcess, allowlistedEnv } from './kernel/process.mjs';
 import { loadConfig } from './kernel/config.mjs';
 
 function commandExists(command) {
@@ -42,7 +42,7 @@ export async function doctor({ configPath } = {}) {
   warn('codex command', commandExists(config.codex?.command), config.codex?.command);
   if (config.codex?.command && commandExists(config.codex.command)) {
     try {
-      const result = await runProcess({ command: config.codex.command, args: ['login', 'status'], timeoutMs: 15_000 });
+      const result = await runProcess({ command: config.codex.command, args: ['login', 'status'], env: allowlistedEnv(), timeoutMs: 15_000 });
       ok('codex login', `${result.stdout}\n${result.stderr}`.includes('Logged in using ChatGPT'));
     } catch (error) {
       ok('codex login', false, error?.code ?? error.message);

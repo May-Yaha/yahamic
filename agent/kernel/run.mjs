@@ -11,8 +11,25 @@ import { runGraph } from './graph.mjs';
 
 function atomicWrite(file, data) {
   const temp = `${file}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(temp, data);
-  fs.renameSync(temp, file);
+  try {
+    const fd = fs.openSync(temp, 'w');
+    try {
+      fs.writeFileSync(fd, data);
+      fs.fsyncSync(fd); // data on disk before the rename makes it visible
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(temp, file);
+  } catch (error) {
+    fs.rmSync(temp, { force: true });
+    throw error;
+  }
+}
+
+export const RUN_ID_PATTERN = /^\d{14}-[0-9a-f]{8}$/;
+
+export function isRunId(value) {
+  return typeof value === 'string' && RUN_ID_PATTERN.test(value);
 }
 
 function runId() {
@@ -26,7 +43,7 @@ function runId() {
  * The blackboard snapshot is persisted after every change when runDir is set,
  * so an interrupted run can always be inspected and reported on.
  */
-export function createRun({ graph, registry, config, workspace, task, runDir, concurrency, signal, emit = () => {}, now = Date.now }) {
+export function createRun({ graph, registry, config, workspace, task, runDir, concurrency, signal, emit = () => {} }) {
   if (typeof task !== 'string' || !task.trim()) {
     throw Object.assign(new Error('A run requires a nonempty task.'), { code: 'RUN_INVALID_TASK' });
   }
@@ -45,22 +62,25 @@ export function createRun({ graph, registry, config, workspace, task, runDir, co
   });
 
   async function start() {
-    const startedAt = now();
     const wallClockMs = Number.isSafeInteger(graph.limits.wallClockMs) && graph.limits.wallClockMs > 0 ? graph.limits.wallClockMs : null;
+    // The wall-clock budget is just another cancel source: in-flight plugins
+    // and child processes stop when it fires, not after the run ends.
+    const budget = wallClockMs !== null ? AbortSignal.timeout(wallClockMs) : null;
+    const runSignal = budget ? AbortSignal.any([signal, budget].filter(Boolean)) : signal;
     let outcome;
     try {
       outcome = await runGraph({
-        graph, registry, blackboard, signal, emit, concurrency,
+        graph, registry, blackboard, signal: runSignal, emit, concurrency,
         ctx: { config, workspace, runDir: dir },
       });
     } catch (error) {
-      if (error?.code === 'PROCESS_CANCELLED' || signal?.aborted) {
+      if (error?.code === 'PROCESS_CANCELLED' || runSignal?.aborted) {
         outcome = { status: 'interrupted', reason: 'Run was cancelled; blackboard state is preserved.' };
       } else {
         outcome = { status: 'blocked', reason: error?.message ?? String(error) };
       }
     }
-    if (wallClockMs !== null && now() - startedAt > wallClockMs && outcome.status === 'completed') {
+    if (budget?.aborted && !signal?.aborted) {
       outcome = { status: 'blocked', reason: `Wall-clock budget of ${wallClockMs} ms exceeded.` };
     }
     blackboard.setStatus(outcome.status);

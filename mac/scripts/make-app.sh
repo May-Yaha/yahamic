@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 APP_NAME="YahaHome"          # 路径用 ASCII,显示名用中文
 DISPLAY_NAME="Yaha 家居"
 BUNDLE_ID="com.yaha.home"
-VERSION="0.3.0"  # 与固件对齐(firmware/CMakeLists.txt PROJECT_VER),Mac 侧勿单独升版
+VERSION="0.4.0"  # 与固件对齐(firmware/CMakeLists.txt PROJECT_VER),Mac 侧勿单独升版
 BUILD_DIR="build"
 APP="$BUILD_DIR/$APP_NAME.app"
 
@@ -51,7 +51,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
-  <key>LSMinimumSystemVersion</key><string>27.0</string>
+  <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>LSUIElement</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHighResolutionCapable</key><true/>

@@ -87,3 +87,42 @@ public func findOutputDevice(named needle: String) -> OutputDevice? {
     }
     return devices.first { $0.name.range(of: needle, options: .caseInsensitive) != nil }
 }
+
+/// 监听设备列表与(当前出口设备的)采样率变化,回调在主队列。
+/// 设备被拔掉/驱动重装、用户在「音频 MIDI 设置」里改采样率时,调用方据此重建 AudioSink。
+public final class AudioHardwareWatcher {
+    private var devicesAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDevices,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain)
+    private var rateAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyNominalSampleRate,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain)
+    private let block: AudioObjectPropertyListenerBlock
+    private var rateDevice: AudioDeviceID?
+
+    public init(onChange: @escaping () -> Void) {
+        block = { _, _ in onChange() }
+        AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &devicesAddress, .main, block)
+    }
+
+    /// 改为监听这台设备的采样率(nil = 不监听)。
+    public func watchRate(of device: AudioDeviceID?) {
+        guard device != rateDevice else { return }
+        if let old = rateDevice {
+            AudioObjectRemovePropertyListenerBlock(old, &rateAddress, .main, block)
+        }
+        rateDevice = device
+        if let device {
+            AudioObjectAddPropertyListenerBlock(device, &rateAddress, .main, block)
+        }
+    }
+
+    deinit {
+        watchRate(of: nil)
+        AudioObjectRemovePropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &devicesAddress, .main, block)
+    }
+}

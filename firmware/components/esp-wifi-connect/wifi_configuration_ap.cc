@@ -660,7 +660,18 @@ void WifiConfigurationAp::StartWebServer()
             // 保存OTA URL
             cJSON *ota_url = cJSON_GetObjectItem(json, "ota_url");
             if (cJSON_IsString(ota_url) && ota_url->valuestring) {
-                this_->ota_url_ = ota_url->valuestring;
+                // 这一项存的是配对码:8–63 位可见 ASCII,与 Mac 端 Pairing.isValid 一致。
+                const char *code = ota_url->valuestring;
+                size_t len = strlen(code);
+                bool valid = len >= 8 && len <= 63;
+                for (size_t i = 0; valid && i < len; i++) valid = code[i] > ' ' && code[i] <= '~';
+                if (!valid) {
+                    nvs_close(nvs);
+                    cJSON_Delete(json);
+                    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Pairing code must be 8-63 visible ASCII chars");
+                    return ESP_FAIL;
+                }
+                this_->ota_url_ = code;
                 err = nvs_set_str(nvs, "ota_url", this_->ota_url_.c_str());
                 if (err != ESP_OK) {
                     ESP_LOGE(TAG, "Failed to save OTA URL: %d", err);
@@ -718,8 +729,9 @@ void WifiConfigurationAp::StartWebServer()
             httpd_resp_set_hdr(req, "Connection", "close");
             httpd_resp_send(req, "{\"success\":true}", HTTPD_RESP_USE_STRLEN);
 
-            ESP_LOGI(TAG, "Saved settings: ota_url=%s, max_tx_power=%d, remember_bssid=%d, sleep_mode=%d",
-                this_->ota_url_.c_str(), this_->max_tx_power_, this_->remember_bssid_, this_->sleep_mode_);
+            // 配对码是密钥材料,只记是否已设置。
+            ESP_LOGI(TAG, "Saved settings: pairing_code=%s, max_tx_power=%d, remember_bssid=%d, sleep_mode=%d",
+                this_->ota_url_.empty() ? "unset" : "set", this_->max_tx_power_, this_->remember_bssid_, this_->sleep_mode_);
             return ESP_OK;
         },
         .user_ctx = this
@@ -966,7 +978,7 @@ void WifiConfigurationAp::SmartConfigEventHandler(void *arg, esp_event_base_t ev
             char password[65] = {0};
             memcpy(ssid, evt->ssid, sizeof(evt->ssid));
             memcpy(password, evt->password, sizeof(evt->password));
-            ESP_LOGI(TAG, "SmartConfig SSID: %s, Password: %s", ssid, password);
+            ESP_LOGI(TAG, "SmartConfig SSID: %s", ssid);
             // 尝试连接WiFi会失败，故不连接
             self->Save(ssid, password);
             // 延迟退出配网模式

@@ -52,6 +52,18 @@ public final class JitterBuffer {
         return value
     }
 
+    /// 批量读出至多 out.count 个样本,返回实际个数(渲染线程每次回调只加一次锁)。
+    public func pop(into out: UnsafeMutableBufferPointer<Int16>) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        let n = min(out.count, (head - tail) & mask)
+        for i in 0..<n {
+            out[i] = storage[tail]
+            tail = (tail + 1) & mask
+        }
+        return n
+    }
+
     /// 静音/重连:清空,渲染端随之输出静音。
     public func clear() {
         lock.lock()

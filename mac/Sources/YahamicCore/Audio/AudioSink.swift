@@ -56,9 +56,15 @@ public final class AudioSink {
     private let outputLock = NSLock()
     private var outputSamplesTotal = 0
     private var callConsumed = 0  // 只在渲染线程碰:本次 render 已消费的源样本数
+    // 渲染线程本地样本块:每次 render 开头从 jitter 一次加锁批量取够本次所需,
+    // nextSample 只读这里,不再逐样本加锁。上次没用完的(至多几个)留到下次。
+    private var local = [Int16](repeating: 0, count: 8192)
+    private var localHead = 0
+    private var localCount = 0
 
     public var deviceName: String { device.name }
     public var sampleRate: Double { device.sampleRate }
+    public var deviceID: AudioDeviceID { device.id }
 
     public init?(device: OutputDevice, jitter: JitterBuffer, targetMs: Int) {
         self.device = device
@@ -170,10 +176,12 @@ public final class AudioSink {
             prebuffering = true
             startedPlayback = false
             starving = false
+            localCount = 0
         }
 
         // 漂移校正:按水位与目标的偏差微调消费速度。
-        let occupancyMs = Double(jitter.count) / 16.0
+        let available = jitter.count + localCount
+        let occupancyMs = Double(available) / 16.0
         let error = (occupancyMs - targetMs) / targetMs
         adjust = min(max(1.0 + 0.05 * error, 0.995), 1.005)
 
@@ -184,7 +192,7 @@ public final class AudioSink {
         // 未开播或流不活跃(松 Fn 静音待命、缓冲自然排空)时的空转完全不计
         // 数——否则 push-to-talk 设备静音几小时,underrun 会随每次回调无限
         // 增长。计数只发生在此处,渲染循环内没有其它递增路径。
-        if !primed && jitter.count < 2, streamActive, startedPlayback, !starving {
+        if !primed && available < 2, streamActive, startedPlayback, !starving {
             starving = true
             jitter.noteUnderrun()
         }
@@ -199,7 +207,7 @@ public final class AudioSink {
         // 播啥、自然播完,不被预缓冲门卡住(播完后回到 prebuffering 待下次开播)。
         if prebuffering {
             let gateHolds = streamActive || !startedPlayback
-            if jitter.count >= prebufferSamples || (!gateHolds && jitter.count > 0) {
+            if available >= prebufferSamples || (!gateHolds && available > 0) {
                 prebuffering = false
             } else {
                 let buffers = UnsafeMutableAudioBufferListPointer(outputData)
@@ -213,6 +221,11 @@ public final class AudioSink {
         }
 
         let buffers = UnsafeMutableAudioBufferListPointer(outputData)
+        var outFrames = 0
+        for buffer in buffers where buffer.mNumberChannels > 0 {
+            outFrames += Int(buffer.mDataByteSize) / (Int(buffer.mNumberChannels) * MemoryLayout<Float>.size)
+        }
+        refill(Int((Double(outFrames) * step * adjust).rounded(.up)) + 2)
         for buffer in buffers {
             let channels = Int(buffer.mNumberChannels)
             guard channels > 0, let data = buffer.mData else { continue }
@@ -234,12 +247,36 @@ public final class AudioSink {
         }
     }
 
+    /// 把本地样本块补到 need 个(一次加锁)。
+    private func refill(_ need: Int) {
+        guard localCount < need else { return }
+        if localHead > 0 {
+            for i in 0..<localCount { local[i] = local[localHead + i] }
+            localHead = 0
+        }
+        let want = min(need, local.count) - localCount
+        guard want > 0 else { return }
+        let got = local.withUnsafeMutableBufferPointer {
+            jitter.pop(into: UnsafeMutableBufferPointer(rebasing: $0[localCount..<localCount + want]))
+        }
+        localCount += got
+    }
+
+    private func takeSample() -> Int16? {
+        guard localCount > 0 else { return nil }
+        let value = local[localHead]
+        localHead += 1
+        localCount -= 1
+        if localCount == 0 { localHead = 0 }
+        return value
+    }
+
     private func nextSample() -> Float {
         if !primed {
             // 需要相邻两个源样本才能插值。空转恢复时从零淡入(10ms):
             // 缓冲断供→恢复的瞬时跳变是"咔哒"声,听写分段器遇到会重发上一段。
             // 正常路径下到不了这里(预缓冲门已保证攒够才消费),仅作防御。
-            guard let first = jitter.pop(), let second = jitter.pop() else {
+            guard localCount >= 2, let first = takeSample(), let second = takeSample() else {
                 ramp = 0
                 prebuffering = true
                 return 0
@@ -260,7 +297,7 @@ public final class AudioSink {
         while frac >= 1.0 {
             frac -= 1.0
             a = b
-            if let next = jitter.pop() {
+            if let next = takeSample() {
                 b = Float(next) / 32768
                 callConsumed += 1
             } else {
