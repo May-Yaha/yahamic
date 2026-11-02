@@ -9,16 +9,17 @@ menu "Yahamic"
 
     choice YAHAMIC_SPECTRUM_STYLE
         prompt "讲话时的屏幕动效"
-        default YAHAMIC_SPECTRUM_WAVES
+        default YAHAMIC_SPECTRUM_BARS
         help
-            正弦声波:三条流动的正弦曲线随音量起伏,音高(频谱重心)
-            连续驱动流速与疏密(语音助手式);
-            频谱柱:32 根圆角色条按频带跳动(播放器式)。
+            电平条:24 根居中对称的圆角条随声音起伏,下方 mm:ss 计时
+            (与 Mac 端讲话浮层同款);
+            正弦声波:三条流动的包络曲线随音量起伏,音高(频谱重心)
+            连续驱动流速与疏密。
 
+        config YAHAMIC_SPECTRUM_BARS
+            bool "电平条 + 计时"
         config YAHAMIC_SPECTRUM_WAVES
             bool "正弦声波(流动曲线)"
-        config YAHAMIC_SPECTRUM_BARS
-            bool "频谱柱(圆角色条)"
     endchoice
 
 endmenu

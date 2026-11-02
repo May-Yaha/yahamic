@@ -67,15 +67,17 @@ void init_nvs() {
 
 // 屏幕状态 = 配对 × 链路 × 静音(空闲时再看 dashboard 新鲜度:
 // 新鲜 → Dashboard 仪表盘,否则 → Muted)。
+// live_since:进入 Live 的时刻(ms),Live 屏的 mm:ss 计时从这里算。
 board::Screen compose(const uplink::Snapshot& s, const power::Reading& battery,
-                      const uplink::Dashboard& dash, uint32_t now) {
+                      const uplink::Dashboard& dash, uint32_t now, uint32_t live_since) {
   board::Screen screen;
   if (s.passkey) {  // 首次配对:Mac 弹系统框,输入屏幕上的 6 位数
-    char digits[16];
-    snprintf(digits, sizeof digits, "%03u %03u", unsigned(s.passkey / 1000), unsigned(s.passkey % 1000));
+    char digits[8];  // 大号数字字体没有空格字形,6 位连写
+    snprintf(digits, sizeof digits, "%06u", unsigned(s.passkey % 1000000));
     screen.state = board::Screen::State::Pairing;
-    screen.line1 = digits;
-    screen.line2 = "PAIR ON MAC";
+    screen.line1 = "PAIR";
+    screen.line2 = digits;
+    screen.line3 = "ENTER ON MAC";
   } else if (!s.live) {
     screen.state = board::Screen::State::Searching;
     screen.line1 = "#searching";
@@ -90,11 +92,15 @@ board::Screen compose(const uplink::Snapshot& s, const power::Reading& battery,
     } else {
       screen.state = board::Screen::State::Muted;
       screen.line1 = "#muted";
-      screen.line2 = "#hold_fn";
+      screen.line2 = "#hold_key";
     }
   } else {
     screen.state = board::Screen::State::Live;
     screen.line1 = "#on_air_s";
+    const uint32_t secs = (now - live_since) / 1000;
+    char timer[8];
+    snprintf(timer, sizeof timer, "%02u:%02u", unsigned(secs / 60 % 100), unsigned(secs % 60));
+    screen.line2 = timer;
   }
   std::string status;
   if (battery.usb || battery.percent >= 0) {
@@ -103,9 +109,9 @@ board::Screen compose(const uplink::Snapshot& s, const power::Reading& battery,
     } else {
       status += "USB";
     }
-    status += " ";
+    status += "   ";
   }
-  status += s.connected ? "BLE " + std::to_string(s.rssi) + "DB" : "ADV";
+  status += s.connected ? "BLE " + std::to_string(s.rssi) + "dBm" : "ADV";
   screen.status = status;
   return screen;
 }
@@ -161,6 +167,8 @@ extern "C" void app_main() {
   uint32_t dash_fed_ms = 0;    // 已喂给 board 的 dashboard 接收时间戳(只在新包时重喂)
   uint32_t next_dash_tick = 0; // Dashboard 屏下一次时钟重绘时刻
   float bars[kSpecBars] = {0};
+  bool was_live = false;
+  uint32_t live_since = 0;  // 本次 Live 的起点(计时用)
 
   while (true) {
     uint32_t now = now_ms();
@@ -203,7 +211,10 @@ extern "C" void app_main() {
       d.kb_batt = dash.kb_batt;
       board::set_dashboard(d);
     }
-    board::Screen screen = compose(s, battery, dash, now);
+    const bool live_now = s.live && !s.muted && !s.passkey;
+    if (live_now && !was_live) live_since = now;
+    was_live = live_now;
+    board::Screen screen = compose(s, battery, dash, now, live_since);
     std::string fingerprint = std::to_string(int(screen.state)) + "|" + screen.line1 + "|" +
                               screen.line2 + "|" + screen.line3 + "|" + screen.status;
     if (fingerprint != shown) {

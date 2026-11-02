@@ -6,9 +6,11 @@
 //   font_clock_num(72px,仅数字+冒号)         Dashboard 大钟
 // 旧 "#key" 短语语法保留在 board.h 的 Screen 契约里(main.cpp 不改),这里查
 // key→中文映射表渲染;无 # 前缀的 ASCII 文本直接显示。
-// Live 屏带 lv_chart 频谱(默认 LINE 240 点×3 series 包络线;Kconfig
-// CONFIG_YAHAMIC_SPECTRUM_BARS 时 COLUMN 32 柱,见 make_spectrum_chart);
-// 频带平滑/相位动力学等数值层与渲染节奏在 board.cpp 的 draw_spectrum。
+// 版式(圆屏,四角与上下边缘会被切掉):状态屏 = 「彩色圆点 + 白色标题」一行
+// + 副题,文字组居中;状态行统一在 y=kStatusY,整行落在圆内。
+// Live 屏:默认 24 根居中对称的电平条 + 计时(Kconfig CONFIG_YAHAMIC_SPECTRUM_BARS),
+// 或三条包络曲线画布(WAVES,见 make_spectrum_chart);数值层与渲染节奏在
+// board.cpp 的 draw_spectrum。
 
 #include "board_screen.h"
 
@@ -32,16 +34,18 @@ namespace {
 constexpr int kWidth = 480;
 constexpr int kHeight = 480;
 
-// 颜色(对齐旧手写渲染的 RGB565 取色,这里用 RGB888 表达):
+// 颜色:macOS 深色模式的系统色(与 Mac 端讲话浮层一致),比纯 RGB 原色柔和。
 const lv_color_t kBlack = lv_color_hex(0x000000);
 const lv_color_t kWhite = lv_color_hex(0xFFFFFF);
-const lv_color_t kGreen = lv_color_hex(0x00FC00);   // 旧 kGreen 0x07E0
-const lv_color_t kRed = lv_color_hex(0xF80000);     // 旧 kRed 0xF800
-const lv_color_t kBlue = lv_color_hex(0x3A3CFF);    // 旧 kBlue 0x3DFF
-const lv_color_t kOrange = lv_color_hex(0xFFA600);  // 旧 kOrange 0xFD20
-const lv_color_t kGray = lv_color_hex(0x8C8E8C);    // 旧 kGray 0x8C71(底部状态行字色)
-const lv_color_t kTrack = lv_color_hex(0x191C19);   // 旧 kTrack 0x18E3(暗槽/分隔线)
-const lv_color_t kInvalid = lv_color_hex(0x525152); // 旧 kDashInvalid 0x528A(无效环灰显)
+const lv_color_t kSoft = lv_color_hex(0xE5E5EA);    // 副题/电平条/计时
+const lv_color_t kRed = lv_color_hex(0xFF453A);     // 送声
+const lv_color_t kBlue = lv_color_hex(0x0A84FF);    // 寻找 Mac
+const lv_color_t kOrange = lv_color_hex(0xFF9F0A);  // 蓝牙配对
+const lv_color_t kGray = lv_color_hex(0x8E8E93);    // 静音圆点、状态行
+const lv_color_t kTrack = lv_color_hex(0x1C1C1E);   // 环的暗槽
+const lv_color_t kInvalid = lv_color_hex(0x48484A); // 无效环灰显
+
+constexpr int kStatusY = 400;  // 状态行 y:y=434 处圆的弦长约 280px,整行不被切
 
 // Dashboard 四环主色(任务书:CPU 青/MEM 蓝/MOUSE 紫/KEYB 粉,底弧暗灰):
 const lv_color_t kArcColors[4] = {
@@ -64,7 +68,7 @@ constexpr Phrase kPhrases[] = {
     {"muted", "已静音"},
     {"searching", "寻找 Mac 中"},
     {"on_air_s", "讲话中"},
-    {"hold_fn", "按住 Fn 键讲话"},
+    {"hold_key", "按住讲话键"},
     {"run_app", "请在 Mac 上运行 Yaha 家居"},
     {"firmware", "固件"},
 };
@@ -84,12 +88,12 @@ std::string resolve_line(const std::string& s) {
 }
 
 // —— 普通状态屏(boot/pairing/searching/muted/live)——
-// 结构:顶部状态色条(12px,沿用旧 draw() 顶条语义)+ 标题(font_zh_title,
-// 状态色)+ 两行副题(font_zh_sub,白)+ 底部分隔线(lv_line,暗灰)+ 状态行
-// (font_zh_sub,灰,对齐旧 L448-470 区域)。
+// 结构:标题行(状态色圆点 + font_zh_title 白字,flex 行整体水平居中)+ 两行
+// 副题 + 底部状态行(font_zh_sub,灰)。不画顶部色条与分隔线:圆屏上会被切成
+// 弧形碎片,状态色只留在圆点上。
 struct StatusScreen {
   lv_obj_t* root = nullptr;
-  lv_obj_t* bar = nullptr;     // 顶部状态色条
+  lv_obj_t* dot = nullptr;     // 状态色圆点
   lv_obj_t* title = nullptr;   // line1
   lv_obj_t* line2 = nullptr;
   lv_obj_t* line3 = nullptr;
@@ -107,6 +111,18 @@ lv_obj_t* make_label(lv_obj_t* parent, int y, const lv_font_t* font, lv_color_t 
   return label;
 }
 
+// 无边框、无内边距、不可点的纯色块(圆点、电平条、透明容器共用)。
+lv_obj_t* make_box(lv_obj_t* parent) {
+  lv_obj_t* box = lv_obj_create(parent);
+  lv_obj_set_style_border_width(box, 0, 0);
+  lv_obj_set_style_pad_all(box, 0, 0);
+  lv_obj_set_style_shadow_width(box, 0, 0);
+  lv_obj_clear_flag(box, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scrollbar_mode(box, LV_SCROLLBAR_MODE_OFF);
+  return box;
+}
+
 lv_obj_t* make_screen() {
   lv_obj_t* scr = lv_obj_create(nullptr);
   lv_obj_set_style_bg_color(scr, kBlack, 0);
@@ -120,37 +136,46 @@ lv_obj_t* make_screen() {
   return scr;
 }
 
-// 底部分隔线 + 状态行(所有屏共用画法,对齐旧 draw() 的 L448 区域)。
 void add_status_row(lv_obj_t* scr, lv_obj_t** status_out) {
-  static const lv_point_precise_t kDividerPts[] = {{0, 0}, {kWidth - 1, 0}};
-  lv_obj_t* divider = lv_line_create(scr);
-  lv_line_set_points(divider, kDividerPts, 2);
-  lv_obj_set_style_line_width(divider, 2, 0);
-  lv_obj_set_style_line_color(divider, kTrack, 0);
-  lv_obj_set_pos(divider, 0, 446);
-  *status_out = make_label(scr, 450, &font_zh_sub, kGray);
+  *status_out = make_label(scr, kStatusY, &font_zh_sub, kGray);
 }
 
-StatusScreen make_status_screen(int title_y, int line2_y, int line3_y) {
+// line2_font:Pairing 的配对数字与 Live 的计时用 72px 数字字体,其余用副题字体。
+StatusScreen make_status_screen(int title_y, int line2_y, int line3_y,
+                                const lv_font_t* line2_font = &font_zh_sub) {
   StatusScreen s;
   s.root = make_screen();
-  s.bar = lv_obj_create(s.root);
-  lv_obj_set_size(s.bar, kWidth, 12);
-  lv_obj_set_pos(s.bar, 0, 0);
-  lv_obj_set_style_border_width(s.bar, 0, 0);
-  lv_obj_set_style_pad_all(s.bar, 0, 0);
-  lv_obj_set_style_radius(s.bar, 0, 0);
-  lv_obj_set_style_bg_opa(s.bar, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(s.bar, LV_OBJ_FLAG_CLICKABLE);
-  s.title = make_label(s.root, title_y, &font_zh_title, kWhite);
-  s.line2 = make_label(s.root, line2_y, &font_zh_sub, kWhite);
-  s.line3 = make_label(s.root, line3_y, &font_zh_sub, kWhite);
+  // 标题行:宽高随内容,对齐方式存在样式里,文字变长变短都自动保持居中。
+  lv_obj_t* row = make_box(s.root);
+  lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+  lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(row, 16, 0);
+  lv_obj_align(row, LV_ALIGN_TOP_MID, 0, title_y);
+  s.dot = make_box(row);
+  lv_obj_set_size(s.dot, 18, 18);
+  lv_obj_set_style_radius(s.dot, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_opa(s.dot, LV_OPA_COVER, 0);
+  s.title = lv_label_create(row);
+  lv_obj_set_style_text_font(s.title, &font_zh_title, 0);
+  lv_obj_set_style_text_color(s.title, kWhite, 0);
+  lv_label_set_text(s.title, "");
+  s.line2 = make_label(s.root, line2_y, line2_font, kSoft);
+  if (line2_font == &font_clock_num) lv_obj_set_style_text_letter_space(s.line2, 6, 0);
+  s.line3 = make_label(s.root, line3_y, &font_zh_sub, kGray);
   add_status_row(s.root, &s.status);
   return s;
 }
 
+// 文字没变就不碰标签:lv_label_set_text 即使同文也会重排并无效化,Live 每秒
+// 一次的计时重绘会连带标题行一起重画。
+void set_text(lv_obj_t* label, const char* text) {
+  if (strcmp(lv_label_get_text(label), text) != 0) lv_label_set_text(label, text);
+}
+
 void set_line(lv_obj_t* label, const std::string& text) {
-  lv_label_set_text(label, text.c_str());
+  set_text(label, text.c_str());
   if (text.empty()) {
     lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
   } else {
@@ -159,8 +184,6 @@ void set_line(lv_obj_t* label, const std::string& text) {
 }
 
 // 6 个状态的 screen 对象(boot/dash/muted/searching/pairing/live)。
-// 布局分组沿用旧 draw():Live 小标题靠上(中部留给频谱);Muted/Searching/
-// Boot/Pairing 文字组居中。
 StatusScreen s_boot;
 StatusScreen s_pairing;
 StatusScreen s_searching;
@@ -168,44 +191,39 @@ StatusScreen s_live;
 StatusScreen s_muted;
 
 // —— Live 屏频谱 ——
-lv_obj_t* live_chart = nullptr;   // BARS 模式:lv_chart 32 柱
-lv_obj_t* live_canvas = nullptr;  // LINE 模式:lv_canvas 480×340(PSRAM)
-lv_chart_series_t* live_chart_series[kSpectrumSeriesN] = {};
-
-// Live 屏频谱。BARS 模式用 lv_chart(32 柱 × 9 分块 = 288 次绘制分发,可接受);
-// LINE 模式用 lv_canvas——why 见 board_screen.h spectrum_canvas 注释(lv_chart
-// 折线在 partial 模式下每分块重分发 720 段,真机 139 ms/帧)。
-void make_spectrum_chart() {
 #if CONFIG_YAHAMIC_SPECTRUM_BARS
-  live_chart = lv_chart_create(s_live.root);
-  lv_obj_set_size(live_chart, kWidth, kSpectrumY1 - kSpectrumY0);  // 480×340
-  lv_obj_set_pos(live_chart, 0, kSpectrumY0);
-  lv_obj_set_style_border_width(live_chart, 0, 0);
-  lv_obj_set_style_pad_all(live_chart, 0, 0);
-  lv_obj_set_style_radius(live_chart, 0, 0);
-  lv_obj_set_style_shadow_width(live_chart, 0, 0);
-  lv_obj_set_style_bg_opa(live_chart, LV_OPA_TRANSP, 0);  // 屏底色即黑
-  lv_obj_clear_flag(live_chart, LV_OBJ_FLAG_CLICKABLE);
-  lv_chart_set_div_line_count(live_chart, 0, 0);
-  lv_obj_set_style_size(live_chart, 0, 0, LV_PART_INDICATOR);  // 不画数据点小圆点
-  // COLUMN 模式(LVGL 9.2 枚举名 LV_CHART_TYPE_BAR):32 柱。480/32 = 15px
-  // 一格,柱间距 4px ⇒ 柱体 11px,与旧手绘的 15 步进/11 柱体一致;圆角 2px
-  // 保留"圆润律动"感。why 单 series 青色:lv_chart 柱色以 series 为单位,
-  // 旧手绘"沿 x 青→蓝→紫粉渐变"在单 series 下不可表达;分段三色需 3 series
-  // (同刻度并排,柱宽骤减)或自绘 draw 事件,性价比低,先取主色青。
-  lv_chart_set_type(live_chart, LV_CHART_TYPE_BAR);
-  lv_chart_set_point_count(live_chart, kSpectrumPoints);
-  lv_chart_set_range(live_chart, LV_CHART_AXIS_PRIMARY_Y, 0, 1000);
-  lv_obj_set_style_pad_column(live_chart, 4, LV_PART_MAIN);
-  lv_obj_set_style_radius(live_chart, 2, LV_PART_ITEMS);
-  live_chart_series[0] = lv_chart_add_series(live_chart, lv_color_hex(0x00FFFF),
-                                             LV_CHART_AXIS_PRIMARY_Y);  // 青(RGB565 0x07FF)
+lv_obj_t* live_bars[kSpectrumPoints] = {};  // 居中的圆角电平条
+int32_t live_bar_h[kSpectrumPoints] = {};   // 上次设的高度,没变就不动对象
+constexpr int kBarW = 10;      // 条宽
+constexpr int kBarStep = 16;   // 条距(条宽 + 6px 空隙),24 根共 378px
+constexpr int kBarMinH = 10;   // 无声时的高度 = 条宽,即一颗圆点
+#endif
+lv_obj_t* live_canvas = nullptr;  // WAVES 模式:lv_canvas(PSRAM)
+
+// Live 屏频谱。BARS 模式:24 个圆角 lv_obj,以频谱区中线上下对称伸缩
+// (lv_chart 的柱子只能从底部长,做不出居中);WAVES 模式用 lv_canvas——why 见
+// board_screen.h spectrum_canvas 注释(lv_chart 折线在 partial 模式下每分块重分发
+// 720 段,真机 139 ms/帧)。
+void make_spectrum_chart() {
+  constexpr int h = kSpectrumY1 - kSpectrumY0;
+#if CONFIG_YAHAMIC_SPECTRUM_BARS
+  constexpr int x0 = (kWidth - (kSpectrumPoints - 1) * kBarStep - kBarW) / 2;
+  for (int i = 0; i < kSpectrumPoints; ++i) {
+    lv_obj_t* bar = make_box(s_live.root);
+    lv_obj_set_style_radius(bar, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(bar, kSoft, 0);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+    lv_obj_set_size(bar, kBarW, kBarMinH);
+    lv_obj_set_pos(bar, x0 + i * kBarStep, kSpectrumY0 + (h - kBarMinH) / 2);
+    live_bars[i] = bar;
+    live_bar_h[i] = kBarMinH;
+  }
 #else
-  // LINE 模式(默认):画布缓冲 480×340 RGB565 ≈ 326 KB,放 PSRAM(内部 RAM 只剩
-  // ~75 KB),按 LV_DRAW_BUF_ALIGN 对齐——LVGL 合成时把它当普通图像,从 PSRAM 读
-  // 一次拷进内部 partial 缓冲再 DMA,不走 PSRAM 直 DMA(S3 的 GPSPI 对非缓存行
-  // 对齐的 PSRAM 区会退回拷临时缓冲,见 board.cpp init_screen 注释)。
-  constexpr int w = kWidth, h = kSpectrumY1 - kSpectrumY0;
+  // 画布缓冲 480×h RGB565,放 PSRAM(内部 RAM 只剩 ~75 KB),按 LV_DRAW_BUF_ALIGN
+  // 对齐——LVGL 合成时把它当普通图像,从 PSRAM 读一次拷进内部 partial 缓冲再 DMA,
+  // 不走 PSRAM 直 DMA(S3 的 GPSPI 对非缓存行对齐的 PSRAM 区会退回拷临时缓冲,见
+  // board.cpp init_screen 注释)。
+  constexpr int w = kWidth;
   const size_t bytes = LV_CANVAS_BUF_SIZE(w, h, 16, LV_DRAW_BUF_STRIDE_ALIGN);
   void* buf = heap_caps_aligned_calloc(LV_DRAW_BUF_ALIGN, 1, bytes, MALLOC_CAP_SPIRAM);
   assert(buf);
@@ -218,9 +236,8 @@ void make_spectrum_chart() {
 }
 
 // —— Dashboard 屏 ——
-// 布局(480x480,对齐旧 compose_dashboard):顶部 HH:MM 大钟(font_clock_num,
-// y=34)+ 日期小字(font_zh_sub 灰,y=104);中部 2x2 lv_arc(环心 x=120/360,
-// y=228/366,外半径 52,环厚 10);底部状态行同其他屏。
+// 布局:顶部 HH:MM 大钟(font_clock_num)+ 日期小字(font_zh_sub 灰);中部
+// 2x2 lv_arc(几何见 make_dashboard);底部状态行同其他屏。
 lv_obj_t* dash_root = nullptr;
 lv_obj_t* dash_clock = nullptr;
 lv_obj_t* dash_date = nullptr;
@@ -256,22 +273,18 @@ void civil_from_days(int64_t z, int& y, int& m, int& d) {
 
 void make_dashboard() {
   dash_root = make_screen();
-  dash_clock = make_label(dash_root, 34, &font_clock_num, kWhite);
+  dash_clock = make_label(dash_root, 36, &font_clock_num, kWhite);
   lv_label_set_text(dash_clock, "--:--");
-  dash_date = make_label(dash_root, 104, &font_zh_sub, kGray);
+  dash_date = make_label(dash_root, 98, &font_zh_sub, kGray);
 
-  constexpr int kRingCx[2] = {120, 360};
-  constexpr int kRingCy[2] = {228, 366};
-  constexpr int kRingSize = 104;  // 外半径 52 × 2
+  // 四环收在圆屏内切区里(最远点离屏心约 200px < 240,不被圆边切):环名用小号
+  // Montserrat 放进环内、百分数下方,不再占环上方一行,省出的空间给环径。
+  constexpr int kRingCx[2] = {165, 315};
+  constexpr int kRingCy[2] = {196, 330};
+  constexpr int kRingSize = 120;
   for (int i = 0; i < 4; ++i) {
     const int cx = kRingCx[i % 2];
     const int cy = kRingCy[i / 2];
-    // 环名标签(font_zh_sub 灰,在环正上方;旧实现因无中文路径用 ASCII,保留)。
-    lv_obj_t* name = make_label(dash_root, cy - kRingSize / 2 - 34, &font_zh_sub, kGray);
-    lv_obj_set_width(name, kRingSize);
-    lv_obj_set_pos(name, cx - kRingSize / 2, cy - kRingSize / 2 - 34);
-    lv_label_set_text(name, kArcNames[i]);
-
     // lv_arc:270° 弧,缺口朝下居中(LVGL 默认 135°..45°,与旧手绘弧同向);
     // 无旋钮、不可点;MAIN = 底弧(暗灰),INDICATOR = 进度(主色)。
     lv_obj_t* arc = lv_arc_create(dash_root);
@@ -294,8 +307,14 @@ void make_dashboard() {
     lv_obj_set_style_text_font(val, &font_zh_sub, 0);
     lv_obj_set_style_text_color(val, kGray, 0);
     lv_label_set_text(val, "--");
-    lv_obj_center(val);
+    lv_obj_align(val, LV_ALIGN_CENTER, 0, -8);
     dash_arc_vals[i] = val;
+
+    lv_obj_t* name = lv_label_create(arc);
+    lv_obj_set_style_text_font(name, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(name, kGray, 0);
+    lv_label_set_text(name, kArcNames[i]);
+    lv_obj_align(name, LV_ALIGN_CENTER, 0, 18);
   }
   add_status_row(dash_root, &dash_status_label);
 }
@@ -303,6 +322,9 @@ void make_dashboard() {
 // 更新一只环:有效值(0..100)按主色显示百分数;无效值(>100,Mac 侧发 255)
 // 整环灰显、中心 "--"(逻辑自旧 draw_dash_ring/compose_dashboard 原样保留)。
 void set_ring(int i, uint8_t pct) {
+  static int shown[4] = {-1, -1, -1, -1};  // 改样式会整环重画,值没变就不动
+  if (shown[i] == pct) return;
+  shown[i] = pct;
   const bool ok = pct <= 100;
   lv_arc_set_value(dash_arcs[i], ok ? int(pct) : 0);
   lv_obj_set_style_arc_color(dash_arcs[i], ok ? kTrack : kInvalid, LV_PART_MAIN);
@@ -313,7 +335,7 @@ void set_ring(int i, uint8_t pct) {
   } else {
     memcpy(val_buf, "--", 3);
   }
-  lv_label_set_text(dash_arc_vals[i], val_buf);
+  set_text(dash_arc_vals[i], val_buf);
   lv_obj_set_style_text_color(dash_arc_vals[i], ok ? kWhite : kGray, 0);
 }
 
@@ -333,7 +355,7 @@ void refresh_dashboard() {
   } else {
     memcpy(clock_buf, "--:--", 6);  // 尚未收到任何一包:时钟占位
   }
-  lv_label_set_text(dash_clock, clock_buf);
+  set_text(dash_clock, clock_buf);
   // 日期小字(如 "NOV 25 TUE"):本地日期由本地秒 ÷ 86400 经 civil 算法换算,
   // 星期由 1970-01-01(周四)推。
   if (dash_has_base) {
@@ -343,14 +365,14 @@ void refresh_dashboard() {
     int wd = int(((days % 7) + 4 + 7) % 7);  // 0=周日;1970-01-01 是周四
     char date_buf[16];
     snprintf(date_buf, sizeof date_buf, "%s %d %s", kDashMonths[m - 1], d, kDashWeekdays[wd]);
-    lv_label_set_text(dash_date, date_buf);
+    set_text(dash_date, date_buf);
   } else {
-    lv_label_set_text(dash_date, "");
+    set_text(dash_date, "");
   }
   const uint8_t values[4] = {dash_data.cpu, dash_data.mem,
                              dash_data.mouse_batt, dash_data.kb_batt};
   for (int i = 0; i < 4; ++i) set_ring(i, values[i]);
-  lv_label_set_text(dash_status_label, dash_status.c_str());
+  set_text(dash_status_label, dash_status.c_str());
 }
 
 lv_color_t state_color(Screen::State state) {
@@ -358,8 +380,8 @@ lv_color_t state_color(Screen::State state) {
     case Screen::State::Boot: return kWhite;
     case Screen::State::Pairing: return kOrange;
     case Screen::State::Searching: return kBlue;
-    case Screen::State::Live: return kGreen;
-    case Screen::State::Muted: return kRed;
+    case Screen::State::Live: return kRed;     // 与 Mac 顶栏/浮层的"送声"红一致
+    case Screen::State::Muted: return kGray;
     case Screen::State::Dashboard: return kWhite;
   }
   return kWhite;
@@ -377,6 +399,12 @@ StatusScreen* pick(Screen::State state) {
   return &s_boot;
 }
 
+// 已是当前屏就不再 load:lv_screen_load 每次都整屏无效化,主循环每次状态行
+// 变化都调 draw,会让整屏重刷(讲话中标题随之闪烁)。
+void show(lv_obj_t* scr) {
+  if (lv_screen_active() != scr) lv_screen_load(scr);
+}
+
 bool ready = false;
 
 }  // namespace
@@ -384,15 +412,16 @@ bool ready = false;
 void init() {
   if (!lvgl_port_lock(0)) return;
   if (!ready) {
-    // 普通屏:Live 标题靠上(中部频谱区);Muted/Searching 居中偏上;
-    // Boot/Pairing 文字组居中。
-    s_live = make_status_screen(26, 300, 356);
-    s_muted = make_status_screen(200, 280, 336);
-    s_searching = make_status_screen(200, 280, 336);
-    s_boot = make_status_screen(150, 240, 296);
-    s_pairing = make_status_screen(150, 240, 296);
+    // 文字组以 y≈225 为中心(状态行在 kStatusY,组心略高于屏心)。
+    // Live:标题在频谱区上方,line2 是频谱区下方的 mm:ss 计时;
+    // Pairing:line2 是 6 位配对数字。两者都用 72px 数字字体。
+    s_live = make_status_screen(92, kSpectrumY1 + 8, 0, &font_clock_num);
+    s_muted = make_status_screen(170, 246, 290);
+    s_searching = make_status_screen(170, 246, 290);
+    s_boot = make_status_screen(170, 246, 290);
+    s_pairing = make_status_screen(124, 200, 280, &font_clock_num);
     make_dashboard();
-    make_spectrum_chart();  // Live 屏的 lv_chart(LINE/COLUMN 由 Kconfig 定)
+    make_spectrum_chart();  // Live 屏的电平条/曲线画布(由 Kconfig 定)
     ready = true;
   }
   lvgl_port_unlock();
@@ -404,19 +433,18 @@ void draw(const Screen& s) {
     // Dashboard 屏:布局与数据源不同,走独立路径;底部状态行从 Screen 带入。
     dash_status = s.status;
     refresh_dashboard();
-    lv_screen_load(dash_root);
+    show(dash_root);
     lvgl_port_unlock();
     return;
   }
   StatusScreen* t = pick(s.state);
-  const lv_color_t color = state_color(s.state);
-  lv_obj_set_style_bg_color(t->bar, color, 0);       // 状态色顶条(旧 draw 顶条语义)
-  lv_obj_set_style_text_color(t->title, color, 0);
-  set_line(t->title, resolve_line(s.line1));
+  const lv_color_t dot = state_color(s.state);
+  if (!lv_color_eq(lv_obj_get_style_bg_color(t->dot, 0), dot)) lv_obj_set_style_bg_color(t->dot, dot, 0);
+  set_text(t->title, resolve_line(s.line1).c_str());
   set_line(t->line2, resolve_line(s.line2));
   set_line(t->line3, resolve_line(s.line3));
-  lv_label_set_text(t->status, s.status.c_str());
-  lv_screen_load(t->root);
+  set_text(t->status, s.status.c_str());
+  show(t->root);
   lvgl_port_unlock();
 }
 
@@ -440,11 +468,24 @@ void draw_dashboard() {
   lvgl_port_unlock();
 }
 
-lv_obj_t* spectrum_chart() { return live_chart; }
 lv_obj_t* spectrum_canvas() { return live_canvas; }
 
-lv_chart_series_t* spectrum_series(int idx) {
-  return (idx >= 0 && idx < kSpectrumSeriesN) ? live_chart_series[idx] : nullptr;
+#if CONFIG_YAHAMIC_SPECTRUM_BARS
+bool set_bars(const int32_t* values) {
+  if (!ready) return false;
+  constexpr int kMaxH = kSpectrumY1 - kSpectrumY0;
+  constexpr int kMid = kSpectrumY0 + kMaxH / 2;
+  bool changed = false;
+  for (int i = 0; i < kSpectrumPoints; ++i) {
+    const int32_t h = kBarMinH + values[i] * (kMaxH - kBarMinH) / 1000;
+    if (h == live_bar_h[i]) continue;
+    live_bar_h[i] = h;
+    lv_obj_set_height(live_bars[i], h);  // set_* 自己无效化新旧两块区域
+    lv_obj_set_y(live_bars[i], kMid - h / 2);
+    changed = true;
+  }
+  return changed;
 }
+#endif
 
 }  // namespace board::screens

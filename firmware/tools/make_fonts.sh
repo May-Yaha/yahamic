@@ -19,7 +19,7 @@
 #   joining    → 正在连接 Wi-Fi
 #   nowifi     → 未连接 Wi-Fi
 #   on_air_s   → 讲话中
-#   hold_fn    → 按住 Fn 键讲话
+#   hold_fn    → 按住 Fn 键讲话(已改为 hold_key → 按住讲话键,字形是子集)
 #   run_app    → 请在 Mac 上运行 Yaha 家居
 #   hold_setup → 长按按键 5 秒进入配网
 #   hotspot    → 热点
