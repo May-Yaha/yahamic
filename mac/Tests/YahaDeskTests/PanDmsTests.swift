@@ -11,6 +11,12 @@ import Testing
     let defaulted = PanLogin.parse(url("https://pan.baidu.com/union/oauth/authorize#access_token=t&state=st"),
                                    state: "st", now: now)
     #expect(defaulted == PanToken(token: "t", expires: 3_592_000))
+    let macState = PanLogin.macStatePrefix + "random"
+    let bridged = PanLogin.parse(url("com.yaha.desk:/baidu-pan/oauth#expires_in=3600&access_token=mac%2Btoken&state=\(macState)"),
+                                 state: macState, now: now)
+    #expect(bridged == PanToken(token: "mac+token", expires: 1_003_600))
+    #expect(PanLogin.parse(url("com.yaha.desk:/baidu-pan/oauth#access_token=t&state=ios"),
+                           state: "ios", now: now) == nil)
     for raw in ["http://pan.baidu.com/union/oauth/authorize#access_token=t&state=st",
                 "https://pan.baidu.com/union/oauth/other#access_token=t&state=st",
                 "https://pan.baidu.com/union/oauth/authorize#error=access_denied&state=st",
@@ -19,6 +25,12 @@ import Testing
                 "https://evil.example/union/oauth/authorize#access_token=t&state=st"] {
         #expect(PanLogin.parse(url(raw), state: "st", now: now) == nil)
     }
+    for raw in ["com.yaha.desk://evil/baidu-pan/oauth#access_token=t&state=\(macState)",
+                "com.yaha.desk:/other#access_token=t&state=\(macState)",
+                "com.evil.desk:/baidu-pan/oauth#access_token=t&state=\(macState)",
+                "com.yaha.desk:/baidu-pan/oauth?access_token=query#access_token=t&state=\(macState)"] {
+        #expect(PanLogin.parse(url(raw), state: macState, now: now) == nil)
+    }
     let authorization = URLComponents(url: PanLogin.authorizeURL(state: "st"), resolvingAgainstBaseURL: false)!
     #expect(authorization.host == "pan.baidu.com")
     #expect(authorization.path == "/union/oauth/authorize")
@@ -26,6 +38,13 @@ import Testing
     let query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
     #expect(query == ["response_type": "token", "client_id": PanLogin.appKey,
                       "redirect_uri": "", "state": "st"])
+    let macAuthorization = URLComponents(
+        url: PanLogin.authorizeURL(state: macState, redirectURI: PanLogin.macRedirectURI),
+        resolvingAgainstBaseURL: false
+    )!
+    let macQuery = Dictionary(uniqueKeysWithValues: macAuthorization.queryItems!.map { ($0.name, $0.value ?? "") })
+    #expect(macQuery["redirect_uri"] == PanLogin.macRedirectURI.absoluteString)
+    #expect(macQuery["state"] == macState)
     #expect(PanToken(token: "t", expires: 1_000_061).valid(at: now))
     #expect(!PanToken(token: "t", expires: 1_000_060).valid(at: now))
 }

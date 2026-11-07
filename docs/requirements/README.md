@@ -12,6 +12,7 @@
 
 ## 2026-11-07
 
+- [Mac 百度网盘默认浏览器回调](desk-macos-baidu-oauth-callback-2026-11-07/README.md)
 - [音质与个人声纹](desk-audio-quality-personal-voice-2026-11-07/README.md)
 - [家庭麦克风图标](desk-home-mic-icon-2026-11-07/README.md)
 - [iOS 云端控制](desk-ios-cloud-2026-11-07/README.md)

@@ -53,7 +53,6 @@ let package = Package(
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("AppKit"),
                 .linkedFramework("ServiceManagement"),
-                .linkedFramework("WebKit"),
             ]
         ),
         .testTarget(

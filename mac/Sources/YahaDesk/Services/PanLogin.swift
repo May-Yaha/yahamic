@@ -1,17 +1,22 @@
 import Foundation
 import Security
-import WebKit
 import DeskProtocol
 #if os(macOS)
 import AppKit
+import AuthenticationServices
 #elseif os(iOS)
 import UIKit
+import WebKit
 #endif
 
 /// Baidu Pan implicit grant (response_type=token, ~30 days, no refresh token). The AppKey is a public client id;
 /// the app secret is never needed here and must not appear in this app. Tokens are never logged.
 enum PanLogin {
     static let appKey = "yausCBE5H5qb1qTFe40KpkP1x6zxXBrd"
+    static let macStatePrefix = "yahadesk-macos."
+    static let macRedirectURI = URL(string: "https://hub.flyaha.top/api/v1/baidu-pan/callback")!
+    static let macCallbackScheme = "com.yaha.desk"
+    static let macCallbackPath = "/baidu-pan/oauth"
 
     enum Navigation {
         case allow
@@ -21,20 +26,25 @@ enum PanLogin {
 
     /// Union OAuth returns the implicit token in the authorization page fragment.
     static func isCallback(_ url: URL) -> Bool {
-        url.scheme == "https" && url.host == "pan.baidu.com" &&
-            url.path == "/union/oauth/authorize" && url.fragment != nil
+        (url.scheme == "https" && url.host == "pan.baidu.com" && url.path == "/union/oauth/authorize" ||
+            url.scheme == macCallbackScheme && url.host == nil && url.path == macCallbackPath) && url.fragment != nil
     }
 
-    static func authorizeURL(state: String) -> URL {
+    static func authorizeURL(state: String, redirectURI: URL? = nil) -> URL {
         var c = URLComponents(string: "https://pan.baidu.com/union/oauth/authorize")!
         c.queryItems = [.init(name: "response_type", value: "token"), .init(name: "client_id", value: appKey),
-                        .init(name: "redirect_uri", value: ""), .init(name: "state", value: state)]
+                        .init(name: "redirect_uri", value: redirectURI?.absoluteString ?? ""),
+                        .init(name: "state", value: state)]
         return c.url!
     }
 
     /// authorize#access_token=…&expires_in=…&state=… → token; error, other page or wrong state → nil.
     static func parse(_ url: URL, state: String, now: Date = Date()) -> PanToken? {
+        if url.scheme == macCallbackScheme, !state.hasPrefix(macStatePrefix) { return nil }
         guard isCallback(url), let fragment = url.fragment else { return nil }
+        guard URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.contains(where: {
+            $0.name == "access_token" || $0.name == "error" || $0.name == "state"
+        }) != true else { return nil }
         var fields: [String: String] = [:]
         for pair in fragment.split(separator: "&") {
             let kv = pair.split(separator: "=", maxSplits: 1).map(String.init)
@@ -92,15 +102,14 @@ enum PanKeychain {
     }
 }
 
-/// Login page in a WKWebView window. The direct fragment response is intercepted and cancelled here.
-/// Non-persistent data store: no Baidu cookies are kept.
 #if os(macOS)
 @MainActor
-final class PanLoginWindow: NSObject, WKNavigationDelegate, NSWindowDelegate {
-    private let state = OAuthPKCE.random()
-    private var window: NSWindow?
+final class PanLoginWindow: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private let state = PanLogin.macStatePrefix + OAuthPKCE.random()
+    private let fallbackAnchor = NSWindow()
+    private var session: ASWebAuthenticationSession?
     private var completion: CheckedContinuation<PanToken, Error>?
-    private static var current: PanLoginWindow?  // keeps the window alive until it finishes
+    private static var current: PanLoginWindow?
 
     static func run() async throws -> PanToken {
         current?.finish(.failure(CancellationError()))
@@ -117,48 +126,51 @@ final class PanLoginWindow: NSObject, WKNavigationDelegate, NSWindowDelegate {
     }
 
     private func show() {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        let web = WKWebView(frame: NSRect(x: 0, y: 0, width: 420, height: 640), configuration: configuration)
-        web.navigationDelegate = self
-        let window = NSWindow(contentRect: web.frame, styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "登录百度网盘"
-        window.contentView = web
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        window.center()
-        self.window = window
-        window.makeKeyAndOrderFront(nil)
+        let session = ASWebAuthenticationSession(
+            url: PanLogin.authorizeURL(state: state, redirectURI: PanLogin.macRedirectURI),
+            callback: .customScheme(PanLogin.macCallbackScheme)
+        ) { [weak self] url, error in
+            Task { @MainActor [weak self] in self?.received(url, error: error) }
+        }
+        session.presentationContextProvider = self
+        self.session = session
+        guard session.start() else {
+            finish(.failure(DeskProtocolError("无法打开默认浏览器，请重试")))
+            return
+        }
+    }
+
+    private func received(_ url: URL?, error: Error?) {
+        if let error {
+            let failure = error as NSError
+            if failure.domain == ASWebAuthenticationSessionErrorDomain,
+               failure.code == ASWebAuthenticationSessionError.Code.canceledLogin.rawValue {
+                finish(.failure(CancellationError()))
+            } else {
+                finish(.failure(DeskProtocolError("默认浏览器未完成网盘登录，请重试")))
+            }
+            return
+        }
+        guard let url, let token = PanLogin.parse(url, state: state) else {
+            finish(.failure(DeskProtocolError("网盘登录未完成或被拒绝")))
+            return
+        }
         NSApp.activate()
-        web.load(URLRequest(url: PanLogin.authorizeURL(state: state)))
+        finish(.success(token))
     }
 
     private func finish(_ result: Result<PanToken, Error>) {
         guard let completion else { return }
         self.completion = nil
-        window?.delegate = nil
-        window?.close()
-        window = nil
+        session?.cancel()
+        session = nil
         if Self.current === self { Self.current = nil }
         completion.resume(with: result)
     }
 
-    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
-                 decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
-        guard let url = action.request.url else { return decisionHandler(.allow) }
-        switch PanLogin.navigation(url, state: state) {
-        case .allow:
-            decisionHandler(.allow)
-        case .reject:
-            decisionHandler(.cancel)
-            finish(.failure(DeskProtocolError("网盘登录未完成或被拒绝")))
-        case let .token(token):
-            decisionHandler(.cancel)
-            finish(.success(token))
-        }
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: \.isVisible) ?? fallbackAnchor
     }
-
-    func windowWillClose(_ notification: Notification) { finish(.failure(CancellationError())) }
 }
 #elseif os(iOS)
 @MainActor

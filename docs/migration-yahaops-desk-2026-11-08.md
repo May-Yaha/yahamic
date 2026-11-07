@@ -57,6 +57,7 @@
 | ESP-IDF 构建 | 已通过 | 删除迁移遗留的旧 ignored `sdkconfig` 后，以 `sdkconfig.defaults` 全量重建通过；host tests 全部通过 |
 | 固件容量 | 风险保留 | `yahadesk.bin` 为 `0x3cd2a0`，4 MiB app 分区仅余 `0x32d60`（5%）；未刷写真机 |
 | 闭源主工作区 WIP | 已补迁 | 清理前发现 codec 保温回滚与静音生命周期测试；迁入后 host tests 全过，`yahadesk.bin` 为 `0x3cd240`，未刷写真机 |
+| 晚于来源分支的提交 | 已补迁 | 补迁 `faeb3992` 的 Mac 百度网盘默认浏览器回调、测试与需求记录；服务端回调实现继续留在 `yahaops-api` |
 | 闭源仓库清理 | 待目标推送后 | 目标未验证、未推送前不删除来源 |
 
 ## 自动工作流取舍
