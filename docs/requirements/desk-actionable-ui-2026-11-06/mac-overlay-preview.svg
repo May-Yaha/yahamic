@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="230" viewBox="0 0 720 230">
+  <rect width="720" height="230" fill="#F2F2F7"/>
+  <style>text { font-family: "PingFang SC", sans-serif; } .label { fill:#3A3A3C; font-size:16px; font-weight:600; }</style>
+  <text class="label" x="32" y="30">当前 · 200 × 40，15 根电平条</text>
+  <g transform="translate(32 50)">
+    <rect width="200" height="40" rx="20" fill="#2C2C2E" fill-opacity=".94"/>
+    <circle cx="18" cy="20" r="4" fill="#FF453A"/>
+    <g fill="#F5F5F7">
+      <rect x="34" y="16" width="3" height="8" rx="1.5"/><rect x="39" y="11" width="3" height="18" rx="1.5"/>
+      <rect x="44" y="14" width="3" height="12" rx="1.5"/><rect x="49" y="8" width="3" height="24" rx="1.5"/>
+      <rect x="54" y="13" width="3" height="14" rx="1.5"/><rect x="59" y="10" width="3" height="20" rx="1.5"/>
+      <rect x="64" y="16" width="3" height="8" rx="1.5"/><rect x="69" y="12" width="3" height="16" rx="1.5"/>
+      <rect x="74" y="7" width="3" height="26" rx="1.5"/><rect x="79" y="14" width="3" height="12" rx="1.5"/>
+      <rect x="84" y="10" width="3" height="20" rx="1.5"/><rect x="89" y="15" width="3" height="10" rx="1.5"/>
+      <rect x="94" y="9" width="3" height="22" rx="1.5"/><rect x="99" y="13" width="3" height="14" rx="1.5"/>
+      <rect x="104" y="17" width="3" height="6" rx="1.5"/>
+    </g>
+    <text x="177" y="24" fill="#B0B0B5" font-size="12" text-anchor="end">00:12</text>
+  </g>
+  <text class="label" x="32" y="137">建议 · 136 × 32，9 根细电平条</text>
+  <g transform="translate(32 156)">
+    <rect width="136" height="32" rx="16" fill="#2C2C2E" fill-opacity=".94"/>
+    <circle cx="15" cy="16" r="3.5" fill="#FF453A"/>
+    <g fill="#F5F5F7">
+      <rect x="28" y="13" width="2" height="6" rx="1"/><rect x="33" y="9" width="2" height="14" rx="1"/>
+      <rect x="38" y="12" width="2" height="8" rx="1"/><rect x="43" y="7" width="2" height="18" rx="1"/>
+      <rect x="48" y="11" width="2" height="10" rx="1"/><rect x="53" y="8" width="2" height="16" rx="1"/>
+      <rect x="58" y="13" width="2" height="6" rx="1"/><rect x="63" y="10" width="2" height="12" rx="1"/>
+      <rect x="68" y="12" width="2" height="8" rx="1"/>
+    </g>
+    <text x="119" y="20" fill="#B0B0B5" font-size="11" text-anchor="end">00:12</text>
+  </g>
+  <text x="32" y="211" fill="#6E6E73" font-size="14">保留红点、实时电平和计时；不抢焦点、不接鼠标，位置不变。</text>
+</svg>

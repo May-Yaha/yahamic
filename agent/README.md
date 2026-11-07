@@ -7,7 +7,7 @@
 ```
 repo-scan ─┐(两源并发)
 wiki-recall┴→ plan(概率决策:任务规划) → route(概率决策:选执行者)
-   → execute(Pi GLM/Kimi、Codex) → verify(swift build / idf.py build)
+   → execute(Pi GLM/Kimi、Codex) → verify(swift test + release build)
    ↺ 验证失败且 rework<2 → 回到 route(换执行者返工)
    → capture(沉淀到 yahallmwiki) → report
 ```
@@ -34,7 +34,7 @@ node bin/yaha-agent.mjs run --task "修复 mac 端设备重连问题"
 node bin/yaha-agent.mjs status --last
 ```
 
-环境变量放在 `agent/.env`(参照 `.env.example`;`ZHIPU_API_KEY` 与 yahallmwiki 同款 Coding Plan 密钥,执行者凭证可复用 yahaagent 的)。配置见 `agent.example.json`,复制为 `agent.json` 后修改;相对路径相对 yahamic 仓库根解析。当前 `agent.example.json` 已按本机写好默认值(codex 走 `127.0.0.1:7890` 代理、验证命令为 `swift build`)。
+环境变量放在 `agent/.env`(参照 `.env.example`;`ZHIPU_API_KEY` 与 yahallmwiki 同款 Coding Plan 密钥,执行者凭证可复用 yahaagent 的)。配置见 `agent.example.json`,复制为 `agent.json` 后修改;相对路径相对 yahamic 仓库根解析。当前 `agent.example.json` 已按本机写好默认值(codex 走 `127.0.0.1:7890` 代理、Mac 验证命令为 `swift test` 与 release build)。固件和 iOS 仍按任务范围显式补跑各自门禁。
 
 ## 终态语义
 

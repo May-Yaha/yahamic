@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "memory_diagnostics.h"
 
 #include <atomic>
 #include <cmath>
@@ -6,6 +7,7 @@
 #include <mutex>
 
 #include "driver/i2s_tdm.h"
+#include "esp_attr.h"
 #include "esp_codec_dev.h"
 #include "esp_codec_dev_defaults.h"
 #include "esp_log.h"
@@ -27,7 +29,9 @@ constexpr gpio_num_t kDin = GPIO_NUM_10;
 
 constexpr int kRate = 16000;       // 采集、传输全程 16 kHz
 constexpr int kFrameSamples = 960; // 60 ms 一帧(同 xiaozhi),Opus 帧长
-constexpr float kMicGainDb = 30.0f; // 与 xiaozhi-esp32 在此板上相同
+// ES7210 上限(37.5 dB):30 dB(xiaozhi 默认)在 50 cm 外讲话只有约 -50 dBFS RMS,
+// 听写吃力;再往上只能在 Mac 端加数字增益。
+constexpr float kMicGainDb = 37.5f;
 constexpr int kFftN = 1024;         // 频谱窗:1024 样本(64 ms),512 个 bin,≥帧长
 constexpr int kBars = 32;           // 屏幕频谱柱数(粗条,播放器量级)
 
@@ -41,15 +45,21 @@ std::atomic<bool> muted_{false};  // 硬件静音状态:set_muted 写,capture_lo
 // 静音淡出:话尾骤停是阶跃咔哒,听写分段器遇咔哒会把上一句整段重发一遍
 // (Mac 端 AudioSink nextSample 注释实证过该机制,即用户看到的"听写文字出现
 // 两遍"),渐弱收尾远比硬切友好。帧长 60ms,3 帧衰减台阶(共 240ms,整数帧
-// 里最接近设计目标 ≈140ms 的取值),末帧增益恰为 0 = 干净的数字零再关 codec。
+// 里最接近设计目标 ≈140ms 的取值),末帧增益恰为 0 = 干净的数字零,之后进入保温。
 constexpr int kMuteFadeFrames = 3;
 std::atomic<int> fade_left{0};  // 剩余淡出帧计数:set_muted(true) 下降沿置 kMuteFadeFrames+1
+// 静音后 codec 保温:冷开要 open 约 40 ms + 丢上电首帧 60 ms,每次按讲话键开头都吃掉约 0.1 s 的字
+// (2026-11-06 串口:开麦指令到首个音频通知 143 ms)。保温期照常读帧但直接丢弃,不算电平/频谱、不上行。
+// shortcut: 固定 30 s,按讲话键连着用基本都落在窗口里;电池续航吃紧再缩短或只在 USB 供电时保温。
+constexpr int64_t kWarmUs = 30 * 1000 * 1000;
+std::atomic<int64_t> muted_at_us{0};
 std::atomic<float> last_level{0};
 
 // 频谱(采集线程写,主循环读):滑窗 + Hann 窗 + 手写基-2 FFT,不引 esp-dsp。
 std::mutex bars_lock;
 float bars[kBars] = {0};
-int16_t window[kFftN] = {0};
+// 频谱缓冲共约 14 KB,放 PSRAM:只有采集线程每 60 ms 算一次,不走 DMA;内部 RAM 留给 Wi-Fi/TLS/BLE。
+EXT_RAM_BSS_ATTR int16_t window[kFftN];
 
 // 与 OpenCharm 的 create_bus 相同的总线,只是不开 TX(ES8311/扬声器整体不碰)。
 void create_bus(i2s_chan_handle_t& rx) {
@@ -163,15 +173,18 @@ void fft(float* re, float* im, int n) {
 // 最大值,显示更有颗粒感。跟着每个 60 ms 音频帧更新(≈ 16.7 Hz),渲染侧
 // (board)再在帧间对频带与重心做平滑。
 void update_spectrum() {
-  static float re[kFftN], im[kFftN], hann[kFftN];
+  EXT_RAM_BSS_ATTR static float re[kFftN], im[kFftN], hann[kFftN];
   static bool hann_ready = false;
   if (!hann_ready) {
     for (int i = 0; i < kFftN; ++i) hann[i] = 0.5f * (1 - std::cos(2 * float(M_PI) * i / (kFftN - 1)));
     hann_ready = true;
   }
-  for (int i = 0; i < kFftN; ++i) {
-    re[i] = float(window[i]) * hann[i];
-    im[i] = 0;
+  {
+    std::lock_guard<std::mutex> guard(bars_lock);  // set_muted 会在别的线程清窗
+    for (int i = 0; i < kFftN; ++i) {
+      re[i] = float(window[i]) * hann[i];
+      im[i] = 0;
+    }
   }
   fft(re, im, kFftN);
   float power[kFftN / 2];
@@ -195,7 +208,7 @@ void update_spectrum() {
   memcpy(bars, next, sizeof bars);
 }
 
-// 采集线程:未静音时持续读 60 ms 帧并交给 sink;静音先走淡出帧再关 codec。
+// 采集线程:未静音时持续读 60 ms 帧并交给 sink;静音先走淡出帧,再保温(读即丢)到期关 codec。
 void capture_loop(void*) {
   int16_t frame[kFrameSamples];
   bool open = false;
@@ -205,19 +218,33 @@ void capture_loop(void*) {
       continue;
     }
     // 淡出窗口:静音但还有淡出帧时保持开麦,把话尾渐弱送完(缩放见 read 后)。
-    const bool fading = muted_.load() && open && fade_left.load() > 0;
-    if (muted_ && open && !fading) {
-      esp_codec_dev_close(mics);
-      open = false;
+    const bool muted = muted_.load();  // 只读一次:两次读之间被静音会把话尾一帧当保温帧丢掉
+    const bool fading = muted && open && fade_left.load() > 0;
+    const bool idle = muted && !fading;
+    if (idle && open) {
+      // 保温期读掉丢弃,DMA 环里不攒静音期的声音,开麦后的下一帧就是新声音;过了保温期才关 codec。
+      if (esp_timer_get_time() - muted_at_us.load() >= kWarmUs) {
+        esp_codec_dev_close(mics);
+        open = false;
+      } else if (esp_codec_dev_read(mics, frame, sizeof frame) != ESP_CODEC_DEV_OK) {
+        vTaskDelay(pdMS_TO_TICKS(5));
+      }
       capture_last_read_us = 0;  // 遥测别把静音期的跨度算进采集间隔
+      continue;
     }
-    if ((muted_ && !fading) || (!open && !open_mic())) {
+    if (idle || (!open && !open_mic())) {
       if (!muted_) vTaskDelay(pdMS_TO_TICKS(50));  // 打不开别空转
       else vTaskDelay(pdMS_TO_TICKS(20));
       continue;
     }
-    open = true;
-    // (遥测基准 last_read_us 在命名空间层,静音关码时会清零)
+    if (!open) {
+      // 刚开 codec 的首帧是上电瞬态(实测前 60 ms 峰值 -0.8 dBFS,近削顶),
+      // 读掉不上行,免得每次按键开头一声爆音;遥测基准仍为 0,下一帧起算。
+      open = true;
+      esp_codec_dev_read(mics, frame, sizeof frame);
+      continue;
+    }
+    // (遥测基准 capture_last_read_us 在命名空间层,静音保温期间清零)
     if (esp_codec_dev_read(mics, frame, sizeof frame) == ESP_CODEC_DEV_OK) {
       int64_t now = esp_timer_get_time();
       uint32_t ts_ms = uint32_t(now / 1000);
@@ -231,7 +258,7 @@ void capture_loop(void*) {
       capture_last_read_us = now;
       // 静音淡出(why 见 fade_left 定义处):每帧按 left/kMuteFadeFrames 线性衰减,
       // left 从 kMuteFadeFrames 走到 0(首帧满幅、末帧数字零),缩放后的样本照常
-      // 走电平/频谱/Opus 上行,让 Mac 端收到完整渐弱的尾巴;末帧发完下一圈关 codec。
+      // 走电平/频谱/Opus 上行,让 Mac 端收到完整渐弱的尾巴;末帧发完下一圈进入保温。
       if (muted_.load()) {
         int left = fade_left.fetch_sub(1) - 1;
         if (left < 0) { left = 0; fade_left.store(0); }
@@ -245,8 +272,11 @@ void capture_loop(void*) {
       // 滑窗前移一帧再追加,频谱跟着音频帧更新(60 ms 一帧 ≈ 16.7 Hz);
       // 屏幕波形的 24-30 fps 目标(实测 24.3-24.8)由主循环渲染节奏决定,与采集帧率解耦,
       // 帧间平滑/重心/相位连续动力学在 board 侧,60 ms 台阶在那里被抹平。
-      memmove(window, window + kFrameSamples, (kFftN - kFrameSamples) * sizeof(int16_t));
-      memcpy(window + kFftN - kFrameSamples, frame, kFrameSamples * sizeof(int16_t));
+      {
+        std::lock_guard<std::mutex> guard(bars_lock);
+        memmove(window, window + kFrameSamples, (kFftN - kFrameSamples) * sizeof(int16_t));
+        memcpy(window + kFftN - kFrameSamples, frame, kFrameSamples * sizeof(int16_t));
+      }
       update_spectrum();
       // Opus 编码后交 sink(带宽 256kbps→32kbps,时戳让 Mac 端正确排序)。
       if (opus_encoder && sink) {
@@ -270,10 +300,12 @@ void capture_loop(void*) {
 }  // namespace
 
 bool init(i2c_master_bus_handle_t bus) {
+  diagnostics::heap("audio before codec");
   if (!create_codec(bus)) {
     ESP_LOGE(kTag, "ES7210 not found");
     return false;
   }
+  diagnostics::heap("audio codec ready");
   // Opus 编码器(32 kbps、60 ms、VOIP 模式、复杂度 0 = 最低 CPU,xiaozhi 做法)。
   esp_opus_enc_config_t enc_cfg = ESP_OPUS_ENC_CONFIG_DEFAULT();
   enc_cfg.sample_rate = kRate;
@@ -282,18 +314,23 @@ bool init(i2c_master_bus_handle_t bus) {
   enc_cfg.frame_duration = ESP_OPUS_ENC_FRAME_DURATION_60_MS;
   enc_cfg.application_mode = ESP_OPUS_ENC_APPLICATION_VOIP;
   enc_cfg.complexity = 0;
+  enc_cfg.enable_vbr = false;  // CBR:每帧 240 B,BLE 分片数固定(见 uplink::send_audio)
   if (esp_opus_enc_open(&enc_cfg, sizeof enc_cfg, &opus_encoder) != ESP_AUDIO_ERR_OK) {
     ESP_LOGE(kTag, "Opus encoder open failed");
     opus_encoder = nullptr;
     return false;
   }
+  diagnostics::heap("audio before 32768 stack");
   // 32 KB 内部栈:去掉 AEC 后内部 RAM 充裕;PSRAM 栈在 Core 1 上引发过
-  // LoadProhibited(缓存一致性问题),内部栈无此忧。采集固定在 Core 1,与
-  // 跑主循环/渲染的 Core 0 核隔离,互不抢时间片。
-  if (xTaskCreatePinnedToCore(capture_loop, "yahamic_mic", 32768, nullptr, 6, &task, 1) != pdPASS) {
+  // LoadProhibited(缓存一致性问题),内部栈无此忧。采集固定在 Core 1(与主循环
+  // 同核,sdkconfig 的 MAIN_TASK_AFFINITY_CPU1),优先级 6 高于主循环,每 60 ms
+  // 抢占一次;Core 0 留给 BLE 与 LVGL。
+  if (xTaskCreatePinnedToCore(capture_loop, "yahadesk_mic", 32768, nullptr, 6, &task, 1) != pdPASS) {
+    diagnostics::heap("audio stack failed");
     ESP_LOGE(kTag, "capture task didn't start");
     return false;
   }
+  diagnostics::heap("audio stack ready");
   ESP_LOGI(kTag, "ready: ES7210 + Opus 32kbps, 16 kHz mono, 60 ms frames");
   return true;
 }
@@ -303,14 +340,18 @@ void set_sink(Sink s) { sink = std::move(s); }
 void start() { running.store(true); }
 
 void set_muted(bool on) {
-  // exchange 取下降沿才启动淡出:重复静音不重置 fade_left,避免淡出中途增益
-  // 被抬回满幅(听感凸包);开麦立即清零,不残留半截淡出窗口。
-  const bool was = muted_.exchange(on);
+  // 只在下降沿启动淡出:重复静音不重置 fade_left,避免淡出中途增益被抬回满幅(听感凸包);
+  // 开麦立即清零,不残留半截淡出窗口。淡出计数与静音时刻先写、再发布 muted_,采集线程
+  // 看到静音时两者已就绪(调用方都在 mic:: 的锁里,读-判-写不会并发)。
+  if (on && !muted_.load()) {
+    muted_at_us.store(esp_timer_get_time());
+    fade_left.store(kMuteFadeFrames + 1);  // +1 = 首个淡出帧仍满幅
+  }
+  muted_.store(on);
   if (on) {
-    if (!was) fade_left.store(kMuteFadeFrames + 1);  // +1 = 首个淡出帧仍满幅
     // 静音即无信号:清窗、清柱,屏幕上的频谱自然落零。
-    memset(window, 0, sizeof window);
     std::lock_guard<std::mutex> guard(bars_lock);
+    memset(window, 0, sizeof window);
     memset(bars, 0, sizeof bars);
   } else {
     fade_left.store(0);
@@ -322,6 +363,7 @@ float level() { return last_level.load(); }
 bool capture_stats(int32_t& avg_ms, int32_t& min_ms, int32_t& max_ms) {
   int32_t n = cap_count.load();
   if (!n) return false;
+  ESP_LOGI(kTag, "capture stack free=%u", unsigned(uxTaskGetStackHighWaterMark(task)));
   avg_ms = cap_sum_ms.load() / n;
   min_ms = cap_min_ms.load();
   max_ms = cap_max_ms.load();
@@ -340,7 +382,7 @@ bool spectrum(float* out, int count) {
   return true;
 }
 
-#if CONFIG_YAHAMIC_SELFTEST
+#if CONFIG_YAHADESK_SELFTEST
 void self_test() {
   if (!mics) {
     ESP_LOGE(kTag, "self-test skipped: no codec");
@@ -369,6 +411,6 @@ void self_test() {
     ESP_LOGI(kTag, "self-test: %d frames, RMS %.0f (%s), %d clipped", frames,
              std::sqrt(sum / frames), frames < 50 ? "too few frames" : "ok", clipped);
 }
-#endif  // CONFIG_YAHAMIC_SELFTEST
+#endif  // CONFIG_YAHADESK_SELFTEST
 
 }  // namespace audio

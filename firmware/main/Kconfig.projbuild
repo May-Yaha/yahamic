@@ -1,44 +1,25 @@
-menu "Yahamic"
+menu "YahaDesk"
 
-    config YAHAMIC_SELFTEST
+    config YAHADESK_SELFTEST
         bool "开机自检:采集 1 秒并打印响度"
         default n
         help
             台架调试用:开机采集 1 秒,在日志里打印 RMS 与削波情况,
             不连 Mac 也能确认麦克风链路是好的。
 
-    config YAHAMIC_AP_PASSWORD
-        string "配网热点的固定密码(空 = 每次随机 10 位)"
-        default ""
-        help
-            配网热点 Yahamic-XXXX 的密码。默认每次随机生成(安全);想省事可设
-            固定值,至少 8 位。注意:固定弱密码会降低配网期间的保密性,仅在
-            自己放心的环境使用。
-
-    config YAHAMIC_DAEMON_IP
-        string "yahamicd 的静态地址(空 = 仅 mDNS 自动发现)"
-        default ""
-        help
-            家里网络固定时可直接填 yahamicd 所在 Mac 的 IP(如 192.168.1.23),
-            设备开机跳过 mDNS 直接握手;握手失败(10 秒无应答)仍自动回落到
-            mDNS 自动发现。
-
-    config YAHAMIC_DAEMON_PORT
-        int "yahamicd 的 UDP 端口"
-        default 7717
-
-    choice YAHAMIC_SPECTRUM_STYLE
+    choice YAHADESK_SPECTRUM_STYLE
         prompt "讲话时的屏幕动效"
-        default YAHAMIC_SPECTRUM_WAVES
+        default YAHADESK_SPECTRUM_BARS
         help
-            正弦声波:三条流动的正弦曲线随音量起伏,音高(频谱重心)
-            连续驱动流速与疏密(语音助手式);
-            频谱柱:32 根圆角色条按频带跳动(播放器式)。
+            电平条:24 根居中对称的圆角条随声音起伏,下方 mm:ss 计时
+            (与 Mac 端讲话浮层同款);
+            正弦声波:三条流动的包络曲线随音量起伏,音高(频谱重心)
+            连续驱动流速与疏密。
 
-        config YAHAMIC_SPECTRUM_WAVES
+        config YAHADESK_SPECTRUM_BARS
+            bool "电平条 + 计时"
+        config YAHADESK_SPECTRUM_WAVES
             bool "正弦声波(流动曲线)"
-        config YAHAMIC_SPECTRUM_BARS
-            bool "频谱柱(圆角色条)"
     endchoice
 
 endmenu

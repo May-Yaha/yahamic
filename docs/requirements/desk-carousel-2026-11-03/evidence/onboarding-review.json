@@ -1,0 +1,30 @@
+{
+  "command": "swift test --disable-xctest && swift build -c release --product YahaDesk",
+  "workdir": "yahaops-desk/mac",
+  "exit_code": 0,
+  "tests": 41,
+  "suites": 2,
+  "test_seconds": 64.38,
+  "release_seconds": 6.46,
+  "source": {
+    "kind": "implementation agent actual tool result",
+    "agent": "/root/mac",
+    "session": 61318,
+    "chunk": "d87c0c"
+  },
+  "raw_log_saved": false,
+  "review": {
+    "api": "Pass, no confirmed findings",
+    "firmware": "Pass, final real capture and connected cloud path pending",
+    "mac_round_1": "One confirmed P2: polling stopped after canceled/failed legacy reauthorization",
+    "mac_round_2": "Pass after failure/cancellation and stop/disconnect regression",
+    "rules_round_1": "Clarify authorized installation credential source and original notification content",
+    "rules_round_2": "Pass"
+  },
+  "runtime_pending": [
+    "User macOS Keychain permission",
+    "Final firmware real capture and screen dump",
+    "Device Wi-Fi and browser grant",
+    "API deployment of desk_prepare_device"
+  ]
+}

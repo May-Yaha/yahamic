@@ -1,0 +1,57 @@
+{
+  "initialized": true,
+  "version": "1.6.2",
+  "projectPath": "<workspace>/yahaops-desk-carousel",
+  "indexPath": "<workspace>/yahaops-desk-carousel/.codegraph",
+  "lastIndexed": "2026-11-03T13:34:02.291Z",
+  "fileCount": 1517,
+  "nodeCount": 24703,
+  "edgeCount": 62893,
+  "dbSizeBytes": 96944128,
+  "walSizeBytes": 0,
+  "backend": "node-sqlite",
+  "journalMode": "wal",
+  "nodesByKind": {
+    "class": 164,
+    "component": 1,
+    "constant": 1290,
+    "enum": 23,
+    "enum_member": 40,
+    "field": 304,
+    "file": 1507,
+    "function": 5569,
+    "import": 9339,
+    "interface": 316,
+    "method": 2464,
+    "property": 1732,
+    "route": 17,
+    "struct": 903,
+    "type_alias": 203,
+    "variable": 831
+  },
+  "languages": [
+    "c",
+    "cpp",
+    "go",
+    "javascript",
+    "python",
+    "swift",
+    "tsx",
+    "typescript",
+    "yaml"
+  ],
+  "pendingChanges": {
+    "added": 0,
+    "modified": 0,
+    "removed": 0
+  },
+  "worktreeMismatch": null,
+  "index": {
+    "builtWithVersion": "1.6.2",
+    "builtWithExtractionVersion": 27,
+    "currentExtractionVersion": 27,
+    "reindexRecommended": false,
+    "state": "complete",
+    "pendingRefs": 0
+  }
+}

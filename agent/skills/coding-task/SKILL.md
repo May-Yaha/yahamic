@@ -33,20 +33,23 @@ description: 用 yahamic-agent 微内核执行 yahamic 仓库的编码任务（�
 
 ## 领域事实（写给决策与排障）
 
-- mac 端验证 = `swift build`（Package.swift 无测试目标）；固件验证 = `idf.py build`，需先 `source ~/esp/esp-idf/export.sh`
-- 设备串口 `/dev/cu.usbmodem2401`；刷机前工具会自动备份 flash
+- Mac 端有 `YahaDeskTests` 与 `DeskProtocolTests`：至少执行 `swift test` 和 `swift build -c release`；本地听写改动另跑 `swift test --filter LocalDictationTests`。
+- iOS 工程由 `ios/project.yml` 生成；验证使用 XcodeGen + `xcodebuild`，不能把 Mac 测试通过当成 iOS 已验证。
+- 固件验证 = `idf.py build` 与 `firmware/tests/README.md` 列出的 host tests，需先加载 ESP-IDF 6.1 环境。刷机、量产分区和设备数据动作仍需单独授权。
+- 产品版本以 `firmware/CMakeLists.txt`、`mac/scripts/make-app.sh` 和 `ios/project.yml` 三端一致为准（当前 0.3.0）。
+- 当前音频主链路为 ESP32-S3 BLE GATT Opus → `DeskCore` → BlackHole；云端内容走 Wi-Fi，不能恢复已删除的 Wi-Fi 音频 daemon。
+- 本地听写复用同一 Fn、PCM capture 与最终文字写入链路；Qwen3-ASR 模型权重是本机缓存，不进入 Git。
 - Codex 子进程走本机代理 `http://127.0.0.1:7890`（配置于 `agent/agent.json`）
 - 图拓扑：repo-scan + wiki-recall → plan(决策) → route(决策) → execute → verify →(失败且护栏允许)↩ route → capture + report
 - 返工护栏：`rework` 计数器上限 2；LLM 决策预算 `llmCalls` 上限 40
 
-## 逃生舱与敏感区（清理/重构任务动前必读，2026-11-01 审计确认）
+## 敏感边界（清理/重构前必读）
 
-- **静态 IP 直连逃生舱是活的**：`uplink.cpp` 的 `CONFIG_YAHAMIC_DAEMON_IP` 回落分支，sdkconfig 已配置，mDNS 失败时每次握手都在用。不许删。
-- **dump 屏幕回传是活的**：type 6 `dump 1` → `consume_dump_request` → `board::dump_rows`，Mac 端 `Uplink.sendDump()`（HomeModel `dump` 命令）可触发，是远程"看"设备 UI 的排障通道。不许删。
-- **台架自检**：`audio::self_test()`，Kconfig `CONFIG_YAHAMIC_SELFTEST` 开关（当前未启用）。是"不连 Mac 也能验麦克风链路"的逃生舱，可包进同一 `#if` 省空间，不可直接删除。
-- **在途功能（半成品，勿当死代码清理）**：Dashboard 空闲仪表盘。固件端 type 7 接收 + `compose_dashboard` 绘制已完成；Mac 端 `Uplink.sendDashboard`（Uplink.swift:316）与采集器 `MetricsCollector.swift` 已就绪，但**发送侧尚无调用方**（HomeModel 未接线，`dash.valid` 恒 false → 真机走 Muted 回退）。收尾任务：run `20261101125833-619723b7`（半途）→ 后续 run `20261101141002-7ecf99cd` 接续。
-- **待用户确认的死代码（作者注明"保留"，清理需用户点头）**：`draw_waves()`（canvas 版对照）、`draw_level`+`compose_bar`+`Screen::level`（响度条旧路径）、`set_brightness()`、`text_zh.h` 未用短语（on_air 大字/release_fn/battery）、`Uplink.State.bonjourName`、FnListener 调试日志。
-- 完整审计结论与决策记录：`docs/evolution-2026-11-01-audit-cleanup.md`。
+- `mic_state` 是静音唯一状态入口；按键、Mac 遥控和断链都必须汇合到这里，不能旁路开麦。
+- BLE 配对、音频分片、Ogg/Opus 录音、DMS 出厂身份与 Wi-Fi 配置都已有回归测试；清理前先查 `docs/requirements/` 与 `firmware/tests/README.md`。
+- `fac` 出厂身份、NVS 中的网络/配对/授权信息和百度网盘令牌不可随普通固件更新擦除；一键安装固件只写版本不同的程序相关分区。
+- `desk_prepare_device` 只准备 OAuth 应用，不等于授权；token 只进入系统钥匙串或设备安全存储。
+- 旧 Wi-Fi 版本的审计记录保留在 `docs/`，仅用于历史追溯，不能覆盖当前 BLE 架构事实。
 
 ## 异常自愈
 
@@ -59,4 +62,4 @@ description: 用 yahamic-agent 微内核执行 yahamic 仓库的编码任务（�
 - **DECISION_NOT_JSON ≠ 没改文件**：执行者常在协议失败前已把改动做完（run 20261101133535 固件 5 个"失败"子任务的 diff 全部落地且质量合格）。终态后必须以动手前快照做全量 diff 对账，不能只信 status 字段。
 - **verify 盲区**：verify 只跑 agent.json 里配置的命令（当前仅 `swift build`）；固件子任务失败时 Mac 侧构建照样绿，outcome 会把整 run 判成 `completed`。看终态后要读 execution ns 确认每个子任务状态，别把 completed 当全绿。
 - **"同时一个运行"是 per-process 限制**：每个宿主会话各自的 mcp-server.mjs 进程独立计数，多会话并发 run 会同时写同一工作区（2026-11-01 实测三 run 并发）。多会话并行前先对表分工；run 终态后一律快照 diff 对账。
-- **版本号统一看 CMakeLists**：固件 `PROJECT_VER`（firmware/CMakeLists.txt）与 make-app.sh `VERSION` 两处须同值（现 0.3.0）；执行者可能把别的端往本端旧值对齐，方向要盯住。（yahamic-mcp MCP 桥已于 2026-11-01 移除，不再有 serverInfo 第三处。）
+- **版本号统一看三端**：固件 `PROJECT_VER`、make-app.sh `VERSION`、iOS `CFBundleShortVersionString` / `MARKETING_VERSION` 必须同值（现 0.3.0）；执行者不能单向拿旧端覆盖新端。

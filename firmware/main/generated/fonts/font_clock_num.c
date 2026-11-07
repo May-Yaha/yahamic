@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 72 px
  * Bpp: 4
- * Opts: --font fonts/NotoSansCJKsc-Medium.otf --size 72 --bpp 4 --range 0x30-0x3A --format lvgl --lv-include lvgl.h --lv-font-name font_clock_num -o /Users/yaha/Code/flyaha/github/May-Yaha/yahamic/firmware/main/generated/fonts/font_clock_num.c
+ * Opts: --font fonts/NotoSansCJKsc-Medium.otf --size 72 --bpp 4 --range 0x30-0x3A --format lvgl --lv-include lvgl.h --lv-font-name font_clock_num -o ../main/generated/fonts/font_clock_num.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

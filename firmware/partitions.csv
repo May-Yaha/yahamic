@@ -2,3 +2,5 @@
 nvs,      data, nvs,     0x9000,  0x6000
 phy_init, data, phy,     0xf000,  0x1000
 factory,  app,  factory, 0x10000, 0x400000
+# 出厂身份(id/cert/key,tools/factory_identity.py 生成 fac.bin):与 nvs 分开,清配置不丢;固件只读。
+fac,      data, nvs,     0x410000, 0x6000

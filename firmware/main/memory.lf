@@ -1,0 +1,6 @@
+# LVGL's non-DMA TLSF pool must not consume the internal heap needed by audio/Wi-Fi.
+# Object granularity selects only the builtin allocator, not the LVGL display/ISR code.
+[mapping:yahadesk_lvgl_pool]
+archive: liblvgl__lvgl.a
+entries:
+    lv_mem_core_builtin (extram_bss)

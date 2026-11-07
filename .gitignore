@@ -3,9 +3,12 @@ firmware/build/
 firmware/sdkconfig
 firmware/managed_components/
 firmware/dependencies.lock
+firmware/.cache/
+firmware/backups/
 
 # Swift
 mac/.build/
+mac/.build-appstore/
 mac/.swiftpm/
 
 # 出厂固件备份(刷机前自动生成,不要提交)

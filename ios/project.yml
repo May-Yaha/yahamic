@@ -1,0 +1,77 @@
+name: YahaDeskIOS
+options:
+  bundleIdPrefix: com.yaha
+  deploymentTarget:
+    iOS: "26.0"
+targets:
+  DeskProtocol:
+    type: framework
+    platform: iOS
+    sources:
+      - ../mac/Sources/DeskProtocol
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: minimal
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: BB24N2QQD3
+        # 商店上传要求内嵌 framework 也带版本号(ITMS-90057),与 App 同版。
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "0.3.0"
+  YahaDeskIOS:
+    type: application
+    platform: iOS
+    dependencies:
+      - target: DeskProtocol
+    sources:
+      - Sources
+      # 图标由 ../mac/scripts/make-icon.swift <png> ios 生成(无 alpha,满幅)。
+      - Assets.xcassets
+      - ../mac/Sources/DeskCore/Link/FactoryIdentity.swift
+      - ../mac/Sources/DeskCore/Link/CloudClient.swift
+      - ../mac/Sources/DeskCore/Link/LoopbackReceiver.swift
+      - ../mac/Sources/YahaDesk/Services/PanLogin.swift
+      - ../mac/Sources/YahaDesk/Services/PanFiles.swift
+      - ../mac/Sources/YahaDesk/Services/DmsClient.swift
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Yaha Desk
+        CFBundleIdentifier: com.yaha.desk  # 与 Mac 同一 bundle id:App Store 通用购买
+        # 必须是字符串:写成数字时 CFNetwork 拼 User-Agent 会崩(首个网络请求即闪退)。
+        CFBundleShortVersionString: "0.3.0"  # 与 Mac、固件同版(make-app.sh 校验)
+        CFBundleVersion: "0.3.0"  # 重新上传同版本时改为 0.3.0.1 这类更大的值
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSBluetoothAlwaysUsageDescription: Yaha Desk 在切换 Wi-Fi 和设备管理页通过蓝牙给桌面设备切换网络、绑定网盘，不采集音频。
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: minimal
+        CODE_SIGN_STYLE: Automatic
+        PRODUCT_BUNDLE_IDENTIFIER: com.yaha.desk
+        DEVELOPMENT_TEAM: BB24N2QQD3
+        ENABLE_PREVIEWS: YES
+        TARGETED_DEVICE_FAMILY: 1
+  YahaDeskIOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+    dependencies:
+      - target: YahaDeskIOS
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: minimal
+        DEVELOPMENT_TEAM: BB24N2QQD3
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  YahaDeskIOS:
+    build:
+      targets:
+        YahaDeskIOS: all
+        YahaDeskIOSTests: [test]
+    test:
+      targets: [YahaDeskIOSTests]

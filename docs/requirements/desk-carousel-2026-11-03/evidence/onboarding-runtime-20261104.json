@@ -1,0 +1,31 @@
+{
+  "checked_at": "2026-11-04 Asia/Shanghai",
+  "app": {
+    "path": "/Applications/YahaDesk.app",
+    "version": "0.2.0",
+    "configured": true,
+    "authenticationMode": "client_credentials",
+    "status": "已连接轮播控制",
+    "desiredRevision": 0
+  },
+  "device": {
+    "name": "yahadesk-222a",
+    "connected": true,
+    "bluetoothEncrypted": true,
+    "muted": true,
+    "ptt": true,
+    "cloudOnline": false
+  },
+  "oauthMetadata": {
+    "httpStatus": 200,
+    "release": "yahaops-api-slot-20261104092157-26d1c2b8",
+    "cache": "MISS",
+    "deskConfigureSupported": true
+  },
+  "secretsPersisted": false,
+  "notes": [
+    "Keychain lookup succeeded after user approval",
+    "No token or secret written to this evidence file",
+    "Wi-Fi provisioning, device browser consent and BLE refresh-token delivery remain unverified"
+  ]
+}

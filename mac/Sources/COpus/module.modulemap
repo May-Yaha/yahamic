@@ -1,0 +1,6 @@
+// 不写 link "opus":链接器会优先挑 Homebrew 的 dylib,产物离开本机就打不开。
+// 静态库由 DeskCore 的 linkerSettings 直接给出。
+module COpus [system] {
+    header "shim.h"
+    export *
+}

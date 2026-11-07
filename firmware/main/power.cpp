@@ -46,7 +46,7 @@ bool init(i2c_master_bus_handle_t bus) {
     chip = nullptr;
     return false;
   }
-  // Yahamic:麦克风由 ALDO1 供电(xiaozhi-esp32 会显式打开它),不依赖出厂状态。
+  // YahaDesk:麦克风由 ALDO1 供电(xiaozhi-esp32 会显式打开它),不依赖出厂状态。
   uint8_t ldos = 0;
   if (read_reg(kLdoEnable, ldos) && !(ldos & 0x01)) {
     write_reg(kLdoEnable, ldos | 0x01);

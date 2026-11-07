@@ -1,0 +1,184 @@
+{
+  "checked_at": "2026-11-04T10:42:45.901251+08:00",
+  "firmware_sha256": "adb959f2f7273d4524815a773eb836b6c65050c4d17b365ce71f9970fe9d47f5",
+  "elf_sha256": "e08e5e27890c289f9671f8cd920819d22b2c4fdc31b829ab12ce22ea1bd1dde0",
+  "target": {
+    "usb_port": "/dev/cu.usbmodem311101",
+    "base_mac": "44:bd:8d:79:22:28"
+  },
+  "control": {
+    "before": {
+      "ptt": true,
+      "device": {
+        "overflows": 0,
+        "rssi": -44,
+        "framesPerSecond": 0,
+        "name": "yahadesk-222a",
+        "levelDb": -120,
+        "muted": true,
+        "diag": {
+          "rxInvalid": 0,
+          "enqueuedFrames": 0,
+          "outputFrames": 0,
+          "dropJump": 0,
+          "rxPackets": 0,
+          "audioPackets": 0,
+          "decodeErrors": 0,
+          "decodedFrames": 0
+        },
+        "underruns": 0,
+        "bufferMs": 0,
+        "droppedFrames": 0,
+        "connected": true
+      },
+      "launchAtLogin": false,
+      "version": "0.2.0",
+      "needsAccessibility": false,
+      "fnAvailable": true,
+      "streamActivations": 0,
+      "outputDevice": "BlackHole 2ch",
+      "streamActive": false
+    },
+    "stress": {
+      "droppedFrames": 0,
+      "droppedFramesDelta": 0,
+      "diagDelta": {
+        "outputFrames": 92,
+        "rxInvalid": 0,
+        "audioPackets": 94,
+        "decodedFrames": 94,
+        "decodeErrors": 0,
+        "dropJump": 0,
+        "rxPackets": 94,
+        "enqueuedFrames": 94
+      },
+      "overflowsDelta": 0,
+      "fpsMin": 10,
+      "fpsAvg": 15,
+      "bufferMsAvg": 109.2,
+      "source": "ambient",
+      "underrunsDelta": 0,
+      "seconds": 5,
+      "levelDbMax": -49.49205006057135
+    },
+    "after": {
+      "ptt": true,
+      "device": {
+        "overflows": 0,
+        "rssi": -46,
+        "framesPerSecond": 6,
+        "levelDb": -74.04527419326273,
+        "name": "yahadesk-222a",
+        "muted": true,
+        "diag": {
+          "decodedFrames": 101,
+          "rxPackets": 101,
+          "dropJump": 0,
+          "audioPackets": 101,
+          "decodeErrors": 0,
+          "outputFrames": 101,
+          "rxInvalid": 0,
+          "enqueuedFrames": 101
+        },
+        "underruns": 0,
+        "bufferMs": 0,
+        "droppedFrames": 0,
+        "connected": true
+      },
+      "launchAtLogin": false,
+      "version": "0.2.0",
+      "fnAvailable": true,
+      "needsAccessibility": false,
+      "streamActivations": 1,
+      "outputDevice": "BlackHole 2ch",
+      "streamActive": false
+    },
+    "cloud": {
+      "appliedRevision": 0,
+      "status": "已连接轮播控制",
+      "online": false,
+      "clientId": "yaha_7PdNbrTFEGxFJMldoLGYTpXO",
+      "configured": true,
+      "authenticationMode": "client_credentials",
+      "desiredRevision": 0
+    },
+    "dump_0": {
+      "ok": true,
+      "note": "截图经串口日志回传(SCR 行),由串口侧重建"
+    },
+    "dump_1": {
+      "ok": true,
+      "note": "截图经串口日志回传(SCR 行),由串口侧重建"
+    },
+    "dump_2": {
+      "ok": true,
+      "note": "截图经串口日志回传(SCR 行),由串口侧重建"
+    },
+    "dump_3": {
+      "note": "截图经串口日志回传(SCR 行),由串口侧重建",
+      "ok": true
+    },
+    "final": {
+      "ptt": true,
+      "device": {
+        "overflows": 0,
+        "rssi": -45,
+        "framesPerSecond": 0,
+        "levelDb": -74.04527419326273,
+        "name": "yahadesk-222a",
+        "muted": true,
+        "diag": {
+          "rxPackets": 101,
+          "decodeErrors": 0,
+          "decodedFrames": 101,
+          "rxInvalid": 0,
+          "audioPackets": 101,
+          "enqueuedFrames": 101,
+          "dropJump": 0,
+          "outputFrames": 101
+        },
+        "underruns": 0,
+        "bufferMs": 0,
+        "droppedFrames": 0,
+        "connected": true
+      },
+      "launchAtLogin": false,
+      "version": "0.2.0",
+      "fnAvailable": true,
+      "needsAccessibility": false,
+      "streamActivations": 1,
+      "outputDevice": "BlackHole 2ch",
+      "streamActive": false
+    }
+  },
+  "firmware": {
+    "capture_interval_ms": {
+      "avg": 59,
+      "min": 59,
+      "max": 60
+    },
+    "capture_stack_free_bytes": 6836,
+    "internal_min_bytes": 21140,
+    "internal_largest_bytes": 13312,
+    "wifi_static_rx": 10,
+    "tls_allocator": "PSRAM"
+  },
+  "screen_dumps": {
+    "complete_samples": 4,
+    "native_width": 120,
+    "native_height": 120,
+    "sampling": "one pixel every 4 rows/columns from 480px display",
+    "observed_pages": [
+      "mac_status",
+      "clock"
+    ],
+    "notification_page_observed": false
+  },
+  "limitations": [
+    "No device HTTPS/OAuth/config persistence verification before Wi-Fi and device grant",
+    "No full rotation cycle or exact page duration measurement",
+    "Screen samples do not prove physical display clarity",
+    "Short ambient test does not establish long-term or Wi-Fi/BLE coexistence stability"
+  ],
+  "credential_values_in_evidence": false
+}

@@ -2,14 +2,17 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
+
+#include "display.h"
 
 #include "driver/i2c_master.h"
 #include "esp_lcd_types.h"
 
 // 板级支持(Waveshare ESP32-S3-Touch-AMOLED-2.16,与 OpenCharm 相同的参考板):
-// I2C 总线、CO5300 屏幕、板上按键(GPIO18)。屏幕不引 LVGL:静态状态用自带
-// 5x7 点阵字体直接画(绿 = ON AIR,红 = MUTED,蓝 = 正在找 Mac,橙 = Wi-Fi
-// 配网热点),Live 时叠加频谱律动图(见 draw_spectrum)。引脚与初始化序列同
+// I2C 总线、CO5300 屏幕、CST9220 触摸(0x5A,INT GPIO11,RST GPIO40)、板上按键(GPIO18)。屏幕由 LVGL 渲染(board_screen.cpp):
+// 状态屏是「彩色圆点 + 标题」(红 = 讲话中,灰 = 已静音,蓝 = 寻找 Mac,橙 = 蓝牙
+// 配对码),Live 时叠加电平条与计时(见 draw_spectrum)。引脚与初始化序列同
 // OpenCharm 的 firmware/device/main/board.cpp(源自 Waveshare 原理图与
 // xiaozhi-esp32)。
 namespace board {
@@ -22,37 +25,37 @@ struct Board {
 
 // 屏幕要显示什么(main.cpp 按当前状态组装,board 负责画)。
 struct Screen {
-  enum class State { Boot, Setup, Joining, Searching, NoWifi, Live, Muted, Dashboard };
+  enum class State { Boot, Pairing, Searching, Live, Muted, Workbench };
+  struct Row {
+    std::string title, text, level;  // level: ok / warn / error,其余灰显
+  };
   State state = State::Boot;
-  std::string line1;  // 大字:状态名(ON AIR、MUTED、…)
-  std::string line2;  // 中字:SSID、热点名、密码等
-  std::string line3;  // 中字第二行
+  std::string line1;  // 大字:状态名(#on_air_s、#muted、PAIR…);工作台详情/告警/通知页为页标题
+  std::string line2;  // 中字:副标题、提示;工作台详情页为摘要、通知页为正文
+  std::string line3;  // 中字第二行;工作台首页为通知条(空则隐藏)、通知页为序号
   float level = 0;    // 响度条,0..1(当前固件未用:Live 屏电平由波形振幅表现)
   std::string status; // 底部一行小字:电量、IP、RSSI、版本
+  // 首页 line1/line2 是麦克风与连接状态；管理员工作台 alert 非空时显示入口。
+  // 总览 rows = 5 个云端分区；详情 rows 为明细；告警页 rows 为告警。
+  display::Page page = display::Page::Home;
+  std::string tone;
+  Row alert;
+  std::vector<Row> rows;
+  std::vector<int64_t> trend;
+  uint8_t speed = 1;  // 通知页跑马灯速度档 0..display::kSpeeds-1(慢/中/快)
+  bool marquee_paused = false;
 };
 
 void init(Board& b);
 bool key_down();
-
-// Dashboard 屏(空闲默认屏)数据:Mac 经 type 7 周期下发(见 uplink::Dashboard;
-// board 不直接依赖 uplink,由 main.cpp 转换后传入)。百分比统一 0..100,
-// 255 = 无效(对应环整环灰显、中心显示 "--")。
-struct DashboardData {
-  uint32_t epoch = 0;        // Unix epoch 秒(UTC)
-  int tz_offset_minutes = 0; // 本地时区偏移(分钟,已含 DST,设备端只做加法)
-  uint8_t cpu = 255;         // CPU 占用 %
-  uint8_t mem = 255;         // 内存占用 %
-  uint8_t mouse_batt = 255;  // 蓝牙鼠标电量 %
-  uint8_t kb_batt = 255;     // 蓝牙键盘电量 %
-};
-
-// 每收到一包仪表盘数据调用一次:更新显示数据并重置时钟基准(基准随每包重算,
-// 无累计分钟漂移;why 见 board.cpp 实现处注释)。
-void set_dashboard(const DashboardData& d);
-// 重绘 Dashboard 屏(大字时钟 + 2x2 弧形进度环 + 底部状态行):时钟按"基准本地
-// 秒 + 单调增量"推进,主循环约 1 Hz 调用即可秒级刷新;整屏重绘,性能已验证
-// 可行(见 draw_spectrum 遥测:整屏刷新在 QSPI 带宽内)。
-void draw_dashboard();
+// 触摸(CST9220):LVGL 点击回调记下目标,主循环每圈取一次;无点击返回 display::kTapNone。
+// 首页 kTapArticle/kTapDaily/kTapHub、麦克风卡 kTapDevice；阅读页另有翻页、暂停与速度循环。
+int take_tap();
+// 告警页第 n 行被按住 1.5 s(desk.operate 的确认动作);无长按返回 -1。
+int take_hold();
+// 时间基准:Mac dashboard 包或 SNTP 校时后调用;工作台首页顶部时钟按
+// "基准本地秒 + 单调增量"推进,主循环约 1 Hz 重画即可秒级刷新。
+void set_clock(uint32_t epoch, int tz_offset_minutes);
 
 // 频谱重心(音高指标):由现有 32 个对数频带(50 Hz..8 kHz,值 0..1)按
 // 能量加权得到,单位是连续频带序号(0..count-1);等效 Hz = 50·160^((u+0.5)/32)
@@ -73,7 +76,7 @@ void draw(const Screen& s);     // 整屏重画(状态变化时调用)
 void draw_level(float level);   // 只重画响度条区域(当前固件未调用,保留 API)
 // 频谱律动图(Live 屏):默认三条频带包络曲线(青/蓝/紫粉,64 点 × 3,流速与空间
 // 周期由频谱重心驱动、相位连续)经 lv_canvas 画进 PSRAM 画布、只无效化曲线占据的
-// 纵向脏带;CONFIG_YAHAMIC_SPECTRUM_BARS 时为 lv_chart 32 根弹簧色柱。持
+// 纵向脏带;CONFIG_YAHADESK_SPECTRUM_BARS 时为 lv_chart 32 根弹簧色柱。持
 // lvgl_port_lock 同步 lv_refr_now,供主循环按 24-30 fps 目标节奏调用(真机 24.3 fps,
 // 遥测见日志)。why 不用 lv_chart 折线/为何分批 dispatch 见 board_screen.h 与实现注释。
 void draw_spectrum(const float* bars, int count);
