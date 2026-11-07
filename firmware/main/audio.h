@@ -8,7 +8,7 @@
 
 // 麦克风采集(xiaozhi-esp32 的做法):ES7210 采集 16 kHz 单声道,**Opus 编码**
 // (32 kbps、60 ms 帧),带宽从裸 PCM 256 kbps 降到 32 kbps。频谱(FFT)在编码前
-// 对原始 PCM 做。静音是真静音:一比特不出设备;codec 保温 30 s(读到即丢)后再关。
+// 对原始 PCM 做。静音是真静音:淡出完成后关 codec,一比特不出设备。
 namespace audio {
 
 // sink 收到的是编码后的 Opus 数据(约 50-200 字节)+ 设备时戳(ms)。
@@ -19,7 +19,7 @@ bool init(i2c_master_bus_handle_t bus);
 void set_sink(Sink sink);
 
 void start();          // 开始采集(静音状态下只是待命)
-void set_muted(bool);  // 硬件静音开关(下降沿触发约 240ms 线性淡出,保温 30 s 后关 codec)
+void set_muted(bool);  // 硬件静音开关(下降沿触发约 240ms 线性淡出再关 codec)
 float level();         // 最近一帧的响度 0..1(遥测日志用;屏幕电平由波形振幅表现)
 
 // 实时频谱(给屏幕的律动图):32 柱,对数频带 50 Hz..8 kHz,0..1。

@@ -45,14 +45,9 @@ std::atomic<bool> muted_{false};  // 硬件静音状态:set_muted 写,capture_lo
 // 静音淡出:话尾骤停是阶跃咔哒,听写分段器遇咔哒会把上一句整段重发一遍
 // (Mac 端 AudioSink nextSample 注释实证过该机制,即用户看到的"听写文字出现
 // 两遍"),渐弱收尾远比硬切友好。帧长 60ms,3 帧衰减台阶(共 240ms,整数帧
-// 里最接近设计目标 ≈140ms 的取值),末帧增益恰为 0 = 干净的数字零,之后进入保温。
+// 里最接近设计目标 ≈140ms 的取值),末帧增益恰为 0 = 干净的数字零再关 codec。
 constexpr int kMuteFadeFrames = 3;
 std::atomic<int> fade_left{0};  // 剩余淡出帧计数:set_muted(true) 下降沿置 kMuteFadeFrames+1
-// 静音后 codec 保温:冷开要 open 约 40 ms + 丢上电首帧 60 ms,每次按讲话键开头都吃掉约 0.1 s 的字
-// (2026-11-06 串口:开麦指令到首个音频通知 143 ms)。保温期照常读帧但直接丢弃,不算电平/频谱、不上行。
-// shortcut: 固定 30 s,按讲话键连着用基本都落在窗口里;电池续航吃紧再缩短或只在 USB 供电时保温。
-constexpr int64_t kWarmUs = 30 * 1000 * 1000;
-std::atomic<int64_t> muted_at_us{0};
 std::atomic<float> last_level{0};
 
 // 频谱(采集线程写,主循环读):滑窗 + Hann 窗 + 手写基-2 FFT,不引 esp-dsp。
@@ -208,7 +203,7 @@ void update_spectrum() {
   memcpy(bars, next, sizeof bars);
 }
 
-// 采集线程:未静音时持续读 60 ms 帧并交给 sink;静音先走淡出帧,再保温(读即丢)到期关 codec。
+// 采集线程:未静音时持续读 60 ms 帧并交给 sink;静音先走淡出帧再关 codec。
 void capture_loop(void*) {
   int16_t frame[kFrameSamples];
   bool open = false;
@@ -218,19 +213,13 @@ void capture_loop(void*) {
       continue;
     }
     // 淡出窗口:静音但还有淡出帧时保持开麦,把话尾渐弱送完(缩放见 read 后)。
-    const bool muted = muted_.load();  // 只读一次:两次读之间被静音会把话尾一帧当保温帧丢掉
+    const bool muted = muted_.load();  // 单次快照:避免两次读取间发布静音时误关 codec、跳过淡出
     const bool fading = muted && open && fade_left.load() > 0;
     const bool idle = muted && !fading;
     if (idle && open) {
-      // 保温期读掉丢弃,DMA 环里不攒静音期的声音,开麦后的下一帧就是新声音;过了保温期才关 codec。
-      if (esp_timer_get_time() - muted_at_us.load() >= kWarmUs) {
-        esp_codec_dev_close(mics);
-        open = false;
-      } else if (esp_codec_dev_read(mics, frame, sizeof frame) != ESP_CODEC_DEV_OK) {
-        vTaskDelay(pdMS_TO_TICKS(5));
-      }
+      esp_codec_dev_close(mics);
+      open = false;
       capture_last_read_us = 0;  // 遥测别把静音期的跨度算进采集间隔
-      continue;
     }
     if (idle || (!open && !open_mic())) {
       if (!muted_) vTaskDelay(pdMS_TO_TICKS(50));  // 打不开别空转
@@ -244,7 +233,7 @@ void capture_loop(void*) {
       esp_codec_dev_read(mics, frame, sizeof frame);
       continue;
     }
-    // (遥测基准 capture_last_read_us 在命名空间层,静音保温期间清零)
+    // (遥测基准 capture_last_read_us 在命名空间层,静音关码时会清零)
     if (esp_codec_dev_read(mics, frame, sizeof frame) == ESP_CODEC_DEV_OK) {
       int64_t now = esp_timer_get_time();
       uint32_t ts_ms = uint32_t(now / 1000);
@@ -258,7 +247,7 @@ void capture_loop(void*) {
       capture_last_read_us = now;
       // 静音淡出(why 见 fade_left 定义处):每帧按 left/kMuteFadeFrames 线性衰减,
       // left 从 kMuteFadeFrames 走到 0(首帧满幅、末帧数字零),缩放后的样本照常
-      // 走电平/频谱/Opus 上行,让 Mac 端收到完整渐弱的尾巴;末帧发完下一圈进入保温。
+      // 走电平/频谱/Opus 上行,让 Mac 端收到完整渐弱的尾巴;末帧发完下一圈关 codec。
       if (muted_.load()) {
         int left = fade_left.fetch_sub(1) - 1;
         if (left < 0) { left = 0; fade_left.store(0); }
@@ -340,13 +329,8 @@ void set_sink(Sink s) { sink = std::move(s); }
 void start() { running.store(true); }
 
 void set_muted(bool on) {
-  // 只在下降沿启动淡出:重复静音不重置 fade_left,避免淡出中途增益被抬回满幅(听感凸包);
-  // 开麦立即清零,不残留半截淡出窗口。淡出计数与静音时刻先写、再发布 muted_,采集线程
-  // 看到静音时两者已就绪(调用方都在 mic:: 的锁里,读-判-写不会并发)。
-  if (on && !muted_.load()) {
-    muted_at_us.store(esp_timer_get_time());
-    fade_left.store(kMuteFadeFrames + 1);  // +1 = 首个淡出帧仍满幅
-  }
+  // 淡出计数先写、再发布静音状态,采集线程不会抢先关 codec;重复静音不重置淡出。
+  if (on && !muted_.load()) fade_left.store(kMuteFadeFrames + 1);  // +1 = 首帧仍满幅
   muted_.store(on);
   if (on) {
     // 静音即无信号:清窗、清柱,屏幕上的频谱自然落零。

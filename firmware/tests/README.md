@@ -62,6 +62,23 @@ through in 30 s, against 997/997 with Wi-Fi unassociated. The real boot
 acceptance is `wifi:pm start, type: 1` plus a clean stress run with Wi-Fi
 associated; this host test does not establish either result.
 
+Muted codec lifecycle regression:
+
+```sh
+python3 firmware/tests/audio_mute_lifecycle_test.py
+```
+
+This extracts and executes the production `capture_loop()` mute branch against
+codec stubs. After the 240 ms fade completes, mute must close the codec without
+reading warm-up frames; the final fade frame must keep it open. A deterministic
+interleaving also publishes mute immediately after the capture loop snapshots
+the old state and verifies that this loop cannot close the codec before the fade.
+This restores the pre-2026-11-06 afternoon lifecycle after the 30-second
+keep-warm experiment correlated with the text-repeat regression. The host check
+does not execute the later PCM scaling/encoding path or prove the Doubao text
+result; those still require an authorized flash and a real dictation test.
+`--source` can replay an earlier `audio.cpp`.
+
 Internal memory regression checks:
 
 ```sh
