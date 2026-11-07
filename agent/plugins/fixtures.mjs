@@ -39,7 +39,7 @@ export function fixtureRouter(params) {
           assignments: {
             tasks: assignments.tasks,
             assignments: assignments.tasks.map(task => ({ taskId: task.id, worker: params.byKind?.[task.kind] ?? worker, reason: 'fixture' })),
-            rework: Boolean(read('execution')?.results?.length),
+            rework: Boolean(read('execution')?.history?.length),
           },
         },
       };
@@ -59,7 +59,7 @@ export function fixtureCoder(_params) {
       const round = (roundsByNode.get(`coder:${node.id}`) ?? 0) + 1;
       roundsByNode.set(`coder:${node.id}`, round);
       const assignments = read('assignments');
-      const previous = read('execution')?.results ?? [];
+      const previous = read('execution')?.history ?? [];
       const results = assignments.assignments.map(assignment => ({
         taskId: assignment.taskId,
         worker: assignment.worker,
@@ -67,7 +67,7 @@ export function fixtureCoder(_params) {
         summary: `fixture 执行完成（第 ${round} 轮，${previous.length} 条历史）`,
         questions: [],
       }));
-      return { outputs: { execution: { results, usage: [] } } };
+      return { outputs: { execution: { results, usage: [], history: [...previous, ...results], allCompleted: true } } };
     },
   };
 }

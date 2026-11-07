@@ -10,7 +10,7 @@ function taskPrompt({ task, plan, repo, verify, workspace }) {
     ? `\n上一轮验证结果（供修复参考）：\n${verify.checks.map(check => `${check.passed ? '✓' : '✗'} ${check.label ?? check.command}${check.passed ? '' : `\n诊断尾部：\n${(check.diagnostics ?? '').slice(-2000)}`}`).join('\n')}`
     : '';
   const tree = repo?.tree?.length ? repo.tree.slice(0, 80).join('\n') : '';
-  return `工作区：${workspace}（yahamic：Mac mini 无线麦克风；firmware/=ESP32-S3 固件 C++ ESP-IDF，mac/=Swift 包 yahamicd+YahaHome）
+  return `工作区：${workspace}（yahamic：Mac mini 无线麦克风；firmware/=ESP32-S3 固件 C++ ESP-IDF，mac/=Swift 包 YahaHome）
 计划总览：${plan?.summary ?? ''}
 
 执行任务：${task.title}（${task.id}，${task.kind}）
@@ -25,7 +25,7 @@ export function createCoder(params) {
   const runCodexImpl = params.runCodex ?? runCodex;
   const runPiImpl = params.runPi ?? runPi;
   return {
-    async execute({ read, config, signal, emit }) {
+    async execute({ read, config, signal, emit, tick, counter }) {
       const assignments = read('assignments');
       const plan = read('plan');
       const repo = read('repo');
@@ -35,17 +35,25 @@ export function createCoder(params) {
 
       const results = [];
       const usage = [];
-      let codexCalls = (read('execution')?.results ?? []).filter(r => r.worker === 'codex').length;
+      const previous = read('execution')?.history ?? [];
+      // history 跨返工轮次只追加；allCompleted 以每个计划任务最新一次尝试为准。
+      const done = (terminal) => {
+        const history = [...previous, ...results];
+        const latest = new Map(history.map(r => [r.taskId, r.status]));
+        const allCompleted = taskById.size > 0 && [...taskById.keys()].every(id => latest.get(id) === 'completed');
+        return { outputs: { execution: { results, usage, history, allCompleted } }, ...(terminal ? { terminal } : {}) };
+      };
       for (const assignment of assignments?.assignments ?? []) {
         const task = taskById.get(assignment.taskId);
         if (!task) {
-          return { outputs: { execution: { results } }, terminal: { status: 'blocked', reason: `路由引用了未知任务 ${assignment.taskId}` } };
+          return done({ status: 'blocked', reason: `路由引用了未知任务 ${assignment.taskId}` });
         }
         if (assignment.worker === 'codex') {
-          if (codexCalls >= config.limits.maxCodexExecutions) {
-            return { outputs: { execution: { results } }, terminal: { status: 'blocked', reason: `Codex 执行预算耗尽（${config.limits.maxCodexExecutions}）。` } };
+          // 黑板计数器 codex-calls 是跨轮次的唯一事实来源（命名受 NS 规则约束，不能用驼峰）。
+          if ((counter('codex-calls') ?? 0) >= config.limits.maxCodexExecutions) {
+            return done({ status: 'blocked', reason: `Codex 执行预算耗尽（${config.limits.maxCodexExecutions}）。` });
           }
-          codexCalls += 1;
+          await tick('codex-calls');
         }
         emit({ type: 'task_started', taskId: task.id, worker: assignment.worker, attemptReason: assignment.reason });
         const prompt = taskPrompt({ task, plan, repo, verify, workspace });
@@ -60,10 +68,10 @@ export function createCoder(params) {
           usage.push(result.usage);
           results.push({ taskId: task.id, worker: assignment.worker, status: result.status, summary: result.text, questions: result.questions });
           if (result.status === 'needs_input') {
-            return { outputs: { execution: { results, usage } }, terminal: { status: 'needs_input', questions: result.questions, reason: `任务 ${task.id} 需要用户决策。` } };
+            return done({ status: 'needs_input', questions: result.questions, reason: `任务 ${task.id} 需要用户决策。` });
           }
           if (result.status === 'blocked') {
-            return { outputs: { execution: { results, usage } }, terminal: { status: 'blocked', reason: `任务 ${task.id} 被 ${assignment.worker} 报告阻塞：${result.text}` } };
+            return done({ status: 'blocked', reason: `任务 ${task.id} 被 ${assignment.worker} 报告阻塞：${result.text}` });
           }
           emit({ type: 'task_finished', taskId: task.id, worker: assignment.worker, status: 'completed' });
         } catch (error) {
@@ -74,14 +82,9 @@ export function createCoder(params) {
           emit({ type: 'task_failed', taskId: task.id, worker: assignment.worker, code: error?.code ?? null });
         }
       }
-      const anyCompleted = results.some(r => r.status === 'completed');
-      const anyFailure = results.some(r => r.status === 'failed');
-      if (!anyCompleted && anyFailure) {
-        // Every routed attempt failed; nothing to verify. Block unless the
-        // router has another candidate to try (it will, via the backedge).
-        return { outputs: { execution: { results, usage } } };
-      }
-      return { outputs: { execution: { results, usage } } };
+      // Failed attempts stay as data: allCompleted=false drives the backedge
+      // so the router can try the next candidate.
+      return done();
     },
   };
 }

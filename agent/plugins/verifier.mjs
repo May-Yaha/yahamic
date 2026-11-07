@@ -3,7 +3,7 @@
 // next decision), never node failures; only cancellation interrupts the run.
 
 import path from 'node:path';
-import { runProcess } from '../kernel/process.mjs';
+import { runProcess, allowlistedEnv } from '../kernel/process.mjs';
 
 const DIAGNOSTIC_LIMIT = 4096;
 
@@ -30,13 +30,20 @@ export function createVerifier(params) {
             args: entry.args ?? [],
             cwd: entry.cwd ? path.resolve(config.workspace, entry.cwd) : config.workspace,
             timeoutMs: entry.timeoutMs ?? 600_000,
+            env: allowlistedEnv(),
             signal,
             outputMode: 'capture',
           });
           checks.push({ label, command: entry.command, passed: result.exitCode === 0, exitCode: result.exitCode, diagnostics: diagnosticsOf(result.stdout, result.stderr) });
         } catch (error) {
           if (error?.code === 'PROCESS_CANCELLED' || signal?.aborted) throw error;
-          checks.push({ label, command: entry.command, passed: false, exitCode: error?.exitCode ?? null, diagnostics: `${error?.code ?? 'ERROR'}: ${error instanceof Error ? error.message : String(error)}` });
+          // PROCESS_EXIT_FAILED carries stdout/stderr tails: the compiler errors live there.
+          const head = `${error?.code ?? 'ERROR'}: ${error instanceof Error ? error.message : String(error)}`;
+          // stderr goes last so it survives the tail cut (that's where errors are).
+          const tail = diagnosticsOf(error?.stderr ?? '', error?.stdout ?? '');
+          const room = Math.max(0, DIAGNOSTIC_LIMIT - head.length - 1);
+          const diagnostics = tail ? `${head}\n${room ? tail.slice(-room) : ''}` : head;
+          checks.push({ label, command: entry.command, passed: false, exitCode: error?.exitCode ?? null, diagnostics });
         }
         emit({ type: 'verify_finished', label, passed: checks[checks.length - 1].passed });
       }

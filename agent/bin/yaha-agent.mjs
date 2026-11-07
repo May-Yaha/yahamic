@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadDotEnv, loadConfig, RUNS_DIR } from '../kernel/config.mjs';
 import { doctor } from '../doctor.mjs';
-import { runTask, listGraphs, loadGraphFile } from '../runtime.mjs';
+import { runTask, listGraphs, loadGraphFile, acquireRunLock } from '../runtime.mjs';
+import { isRunId } from '../kernel/run.mjs';
 import { createAgentRegistry, createDemoRegistry } from '../plugins/index.mjs';
 
 function parseArgs(argv) {
@@ -86,7 +87,7 @@ async function main() {
     console.log(`[simulation] demo 使用 fixture 插件,零模型调用;graph=coding, task=${task}\n`);
     const { report } = await runTask({ task, config, registry, emit: printEvent });
     console.log(`\n${report.facts?.report?.text ?? '(无报告)'}`);
-    console.log(`\n终态:${report.status}${report.dir ?? ''}`);
+    console.log(`\n终态:${report.status}`);
     return report.status === 'completed' ? 0 : 1;
   }
 
@@ -98,6 +99,7 @@ async function main() {
     const graphName = typeof args.graph === 'string' ? args.graph : 'coding';
     const config = loadConfig(args.config);
     const registry = createAgentRegistry();
+    const release = acquireRunLock(RUNS_DIR);
     const controller = new AbortController();
     const onSignal = () => controller.abort();
     process.once('SIGINT', onSignal);
@@ -113,6 +115,7 @@ async function main() {
       console.log(`\n终态:${report.status}  运行目录:${path.join(RUNS_DIR, report.runId)}`);
       return report.status === 'completed' ? 0 : 1;
     } finally {
+      release();
       process.removeListener('SIGINT', onSignal);
       process.removeListener('SIGTERM', onSignal);
     }
@@ -122,10 +125,11 @@ async function main() {
     let runId = args.run;
     if (runId === true || runId === undefined) {
       if (!args.last) { console.error('需要 --run <runId> 或 --last'); return 2; }
-      const entries = fs.existsSync(RUNS_DIR) ? fs.readdirSync(RUNS_DIR).sort() : [];
+      const entries = fs.existsSync(RUNS_DIR) ? fs.readdirSync(RUNS_DIR).filter(isRunId).sort() : [];
       if (!entries.length) { console.error('没有历史运行。'); return 1; }
       runId = entries[entries.length - 1];
     }
+    if (!isRunId(runId)) { console.error(`runId 格式无效:${runId}`); return 2; }
     const dir = path.join(RUNS_DIR, runId);
     const reportFile = path.join(dir, 'report.json');
     if (fs.existsSync(reportFile)) {

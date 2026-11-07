@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCoder } from '../plugins/coder.mjs';
 import { createVerifier } from '../plugins/verifier.mjs';
+import { runProcess, allowlistedEnv } from '../kernel/process.mjs';
 
 const config = {
   workspace: '/w',
@@ -10,12 +11,14 @@ const config = {
   verify: { commands: [] },
 };
 
-function ctx(facts) {
+function ctx(facts, counters = {}) {
   return {
     read: ns => structuredClone(facts[ns]),
     config,
     signal: null,
     emit: () => {},
+    counter: name => counters[name] ?? null,
+    tick: async name => { counters[name] = (counters[name] ?? 0) + 1; },
   };
 }
 
@@ -105,4 +108,62 @@ test('verifier turns command outcomes into data with bounded diagnostics', async
 
   const empty = await createVerifier({}).execute({ ...ctx({}), config: { ...config, verify: { commands: [] } } });
   assert.equal(empty.outputs.verify.allPassed, null);
+});
+
+test('execution.history is append-only across rounds and codex calls tick the blackboard counter', async () => {
+  const coder = createCoder({
+    runPi: async () => { throw new Error('pi down'); },
+    runCodex: async () => ({ text: '{"status":"completed","summary":"ok","questions":[]}' }),
+  });
+  const counters = {};
+  const round1 = await coder.execute(ctx({
+    assignments: { tasks: [planTasks[0]], assignments: [{ taskId: 't1', worker: 'glm', reason: '' }] },
+    plan: { summary: 's', tasks: [planTasks[0]] },
+  }, counters));
+  assert.equal(round1.outputs.execution.allCompleted, false);
+  const round2 = await coder.execute(ctx({
+    assignments: { tasks: [planTasks[0]], assignments: [{ taskId: 't1', worker: 'codex', reason: '' }] },
+    plan: { summary: 's', tasks: [planTasks[0]] },
+    execution: round1.outputs.execution,
+  }, counters));
+  assert.deepEqual(round2.outputs.execution.history.map(r => `${r.worker}:${r.status}`), ['glm:failed', 'codex:completed']);
+  assert.equal(round2.outputs.execution.results.length, 1, 'results stays the current round');
+  assert.equal(round2.outputs.execution.allCompleted, true);
+  assert.equal(counters['codex-calls'], 1);
+  // Budget comes from the counter, not from the (possibly truncated) results.
+  const round3 = await coder.execute(ctx({
+    assignments: { tasks: [planTasks[1]], assignments: [{ taskId: 't2', worker: 'codex', reason: '' }] },
+    plan: { summary: 's', tasks: planTasks },
+    execution: { results: [], history: [] },
+  }, counters));
+  assert.equal(round3.terminal.status, 'blocked');
+});
+
+test('PROCESS_EXIT_FAILED carries output tails into verifier diagnostics', async () => {
+  const verifier = createVerifier({});
+  const local = { ...config, workspace: process.cwd(), verify: { commands: [
+    { command: process.execPath, args: ['-e', "console.log('x'.repeat(9000));console.error('boom-detail');process.exit(3)"], label: 'tail' },
+  ] } };
+  const result = await verifier.execute({ ...ctx({}), config: local });
+  const check = result.outputs.verify.checks[0];
+  assert.equal(check.exitCode, 3);
+  assert.match(check.diagnostics, /^PROCESS_EXIT_FAILED/);
+  assert.match(check.diagnostics, /boom-detail/);
+  assert.ok(check.diagnostics.length <= 4096);
+});
+
+test('verify/doctor child env is an allowlist: secrets never reach the child', async () => {
+  const env = allowlistedEnv({ PATH: '/bin', https_proxy: 'http://p', DEVELOPER_DIR: '/d', ZHIPU_API_KEY: 'secret', NODE_OPTIONS: '--x' });
+  assert.deepEqual(env, { PATH: '/bin', https_proxy: 'http://p', DEVELOPER_DIR: '/d' });
+  const seen = [];
+  await createVerifier({ runProcess: async ({ env: childEnv }) => { seen.push(childEnv); return { stdout: '', stderr: '', exitCode: 0 }; } })
+    .execute({ ...ctx({}), config: { ...config, verify: { commands: [{ command: 'true' }] } } });
+  process.env.YAHA_TEST_SECRET = 'leak';
+  try {
+    const out = await runProcess({ command: process.execPath, args: ['-e', 'process.stdout.write(String(process.env.YAHA_TEST_SECRET))'], env: allowlistedEnv() });
+    assert.equal(out.stdout, 'undefined');
+  } finally {
+    delete process.env.YAHA_TEST_SECRET;
+  }
+  assert.equal(Object.hasOwn(seen[0], 'ZHIPU_API_KEY'), false);
 });

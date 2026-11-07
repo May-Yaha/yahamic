@@ -49,7 +49,7 @@ function planPrompt({ task, repo, wiki, maxTasks, maxCodexExecutions }) {
     ? wiki.pages.map(page => `# ${page.title} (${page.status})\n${page.content.slice(0, 2000)}`).join('\n\n')
     : '(无相关 wiki 命中)';
   const repoTree = repo?.tree?.length ? repo.tree.join('\n') : '(目录不可用)';
-  return `你是 yahamic 项目的编码规划器。yahamic 是一个 Mac mini 无线麦克风项目：firmware/ 为 ESP32-S3 固件（ESP-IDF，C++），mac/ 为 Swift 包（yahamicd 守护进程 + YahaHome 菜单应用，SwiftUI）。只读规划，不修改文件。
+  return `你是 yahamic 项目的编码规划器。yahamic 是一个 Mac mini 无线麦克风项目：firmware/ 为 ESP32-S3 固件（ESP-IDF，C++），mac/ 为 Swift 包（YahaHome 菜单应用，SwiftUI；设备与 Mac 走 BLE GATT 直连）。只读规划，不修改文件。
 
 用户任务：${task}
 

@@ -7,7 +7,8 @@
 
 ## 来源与基线
 
-- 目标仓库基线：`yahamic` `4f23296555fd22118f9c247d3745362a6139d2b6`。
+- 目标仓库初始基线：`yahamic` `4f23296555fd22118f9c247d3745362a6139d2b6`；提交前已合并远端
+  `main` `9d5d8d0ee52388c9ac086299537bed8c2e5e0f75`，保留其 agent 运行时改进。
 - 来源仓库基线：`yahaops` `0815a5582e747ae305f9e6fadba976d2da1689b6`。
 - 来源工作分支：`codex/desk-unified-dictation-2026-11-07`；快照额外包含尚未合入来源仓库
   `main` 的 GPLv3 与 Qwen3 本地听写改造。
@@ -47,6 +48,7 @@
 | 项目 | 状态 | 证据或阻塞 |
 | --- | --- | --- |
 | 快照覆盖 | 已完成 | 产品目录与 22 组记录已进入迁移分支 |
+| 远端并发变更 | 已合并 | 保留 `9d5d8d0` 的 agent 运行时与 47 项回归；11 月 2 日的旧命名产品实现由 11 月 8 日迁移快照覆盖 |
 | Mac 定向测试 | 已通过 | `swift test --filter LocalDictationTests`：8 项通过，真实模型用例默认按环境变量跳过 |
 | Qwen 真实推理 | 已通过 | 使用本机既有 TypeWhisper 固定快照与临时 16 kHz PCM；`qwenRecognizesAReal16kPCMFixture` 5.858 秒通过；未下载或提交权重 |
 | Mac 全量测试 / release build | 已通过 | 全量 88 项测试通过；`swift build -c release` 通过；既有 warning 另列、不冒充零 warning |
