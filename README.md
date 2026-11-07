@@ -325,14 +325,14 @@ account 为预置 Client ID，valueData 为 UTF-8 密钥；旧 PKCE 项`com.yaha
 
 设备控制与 agent 推卡片 2026-11-06 起只走网盘设备服务（DMS 指令 `get_status`/`mute`/`card`/`unbind`），yahaops 只提供业务数据；`desk_send_card`、`desk_mute` 与旧 `desk_status` 已删除。
 
-iPhone「Yaha 桌面」2026-11-07 起不再靠蓝牙看状态：设备每次 `desk_monitor` 带上固件版本、Wi-Fi 名、静音、Mac 蓝牙和网盘设备服务连接，iPhone 用内置应用登录 Zhi.AI（`desk.status`，只读）后读最近一次上报，3 分钟内有上报算在线；远程静音、卡片与解绑用 iPhone 的网盘令牌经 DMS 下发。蓝牙只在「首次配置」里连接。见[iPhone 云端状态](../docs/requirements/desk-ios-cloud-2026-11-07/README.md)。`card` 只下发文字，由固件校验后显示，超过 60 秒的指令过期不补送。
+iPhone「Yaha 桌面」2026-11-07 起不再靠蓝牙看状态：设备每次 `desk_monitor` 带上固件版本、Wi-Fi 名、静音、Mac 蓝牙和网盘设备服务连接，iPhone 用内置应用登录 Zhi.AI（`desk.status`，只读）后读最近一次上报，3 分钟内有上报算在线；远程静音、卡片与解绑用 iPhone 的网盘令牌经 DMS 下发。蓝牙只在「首次配置」里连接。见[iPhone 云端状态](docs/requirements/desk-ios-cloud-2026-11-07/README.md)。`card` 只下发文字，由固件校验后显示，超过 60 秒的指令过期不补送。
 **云端只能静音，不能开麦**；语音与蓝牙配对边界保持原义。0.3.0的验证与人工待验项见
-[桌面工作台需求](../docs/requirements/desk-workbench-2026-11-05/README.md)。
+[桌面工作台需求](docs/requirements/desk-workbench-2026-11-05/README.md)。
 
 卡片沿用480×480方屏的深灰圆角通知卡：宽424px、两侧各28px留白，标题与正文左对齐；
 正文压成一行跑马灯（32 px 字体 `font_zh_marquee`，比标题大一号），从右往左循环滚动（放得下就不动），不省略；仅有标题时不预留正文空块。
 卡片下方一排按钮：上一篇 / 慢 中 快 / 下一篇，速度档存在设备上，重启沿用。电量与连接状态在卡片外底部。
-布局与验收记录见[方屏通知卡](../docs/requirements/desk-notification-card-2026-11-03/README.md)。
+布局与验收记录见[方屏通知卡](docs/requirements/desk-notification-card-2026-11-03/README.md)。
 云端状态可用控制接口 `cloud` 命令查看。
 
 ## 安全模型
@@ -364,7 +364,7 @@ iPhone「Yaha 桌面」2026-11-07 起不再靠蓝牙看状态：设备每次 `de
 
 - 协议 v3（BLE）的历史构建记录不能证明本次无线共存性能；真机配对、压测、
   断链重连与长静音回归待复验。上面的「已验证」条目和前文压测数据都来自 Wi-Fi 版本。
-- 0.3.0 桌面工作台的验证状态见[验收表](../docs/requirements/desk-workbench-2026-11-05/acceptance.md)；触摸、内存水位与无线共存待真机复验。0.2.0 轮播（已删除）的测试、构建、兼容与上线状态记录在[验证记录](../docs/requirements/desk-carousel-2026-11-03/verification.md)，不沿用历史压测结论。
+- 0.3.0 桌面工作台的验证状态见[验收表](docs/requirements/desk-workbench-2026-11-05/acceptance.md)；触摸、内存水位与无线共存待真机复验。0.2.0 轮播（已删除）的测试、构建、兼容与上线状态记录在[验证记录](docs/requirements/desk-carousel-2026-11-03/verification.md)，不沿用历史压测结论。
 - 设备只接受一个连接:Mac 不在线时,别的设备连上会占住链路(配不上对就一直停在配对屏),
   断开后恢复广播。
 

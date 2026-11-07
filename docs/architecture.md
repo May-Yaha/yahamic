@@ -1,7 +1,7 @@
 # YahaDesk 架构
 
 ESP32-S3 固件与 Mac App 通过加密 BLE 传音频、静音、指标、配网和设备授权；设备直接以 Wi-Fi/HTTPS 连接云端。
-Mac 只负责配网与设备授权交付，不拉取或确认设备指令。设备空闲界面是桌面工作台，契约见[桌面工作台需求](../../docs/requirements/desk-workbench-2026-11-05/README.md)；2026-11-05 删除了页面轮播。
+Mac 只负责配网与设备授权交付，不拉取或确认设备指令。设备空闲界面是桌面工作台，契约见[桌面工作台需求](requirements/desk-workbench-2026-11-05/README.md)；2026-11-05 删除了页面轮播。
 
 ## 模块与职责
 
@@ -55,4 +55,4 @@ sequenceDiagram
 - 配对和讲话优先；Mac断开仍可通过Wi-Fi展示内容，Mac指标过期显示未知。云端网络错误不能卡住音频采集和主屏幕循环。
 - 发布先API、后Mac/固件；固件烧录和浏览器登录由用户授权/操作，构建通过不代表真机性能或实际授权通过。
 
-验证入口与实际证据见[需求](../../docs/requirements/desk-workbench-2026-11-05/README.md)与[验收表](../../docs/requirements/desk-workbench-2026-11-05/acceptance.md)。
+验证入口与实际证据见[需求](requirements/desk-workbench-2026-11-05/README.md)与[验收表](requirements/desk-workbench-2026-11-05/acceptance.md)。
