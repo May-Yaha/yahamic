@@ -96,3 +96,24 @@ TypeWhisper 的录音器、热键、插件宿主、历史和订阅系统会产�
   `connectIME`/`restoreInput` 与 DeskCore 的系统默认输入读写；新装默认打开「本地转文字」，
   已有用户的开关值不变。固件、BLE/Opus、BlackHole 出口未改。完整 `swift test` 88 项通过，
   其中真实 Qwen 测试用本机已下载快照与 Tingting 合成的 16 kHz PCM 跑通；真人语音 A/B 仍未验。
+
+- 2026-11-09：每次本地转文字写入成功的文本，以同名 `HHmmss.txt` 与录音 `HHmmss.opus` 放在同一日期目录，
+  随录音一起上传 `/apps/拾见/录音/<日期>/`；文字在录音尾窗内或文件落盘后到达都能配对，未登录网盘时不录音也不留文本。
+  Qwen 上下文加入 vibe coding 常用英文术语。Tingting 合成句「帮我用 Claude Code 跑一下 swift test，然后 git commit
+  再 push 到 main 分支」：无术语表输出 `Swift Test`/`Git Commit`/`Push`，加术语表后 `Git commit`/`push` 保持小写；
+  `swift test` 仍为 `Swift Test`。合成语音不能代表真人口音，真人 A/B 未做。
+
+## P2 微调路线（草案，未执行）
+
+1. 数据：录音与写入文本已成对上传网盘 `/apps/拾见/录音/<日期>/HHmmss.{opus,txt}`。按用户要求至少攒满
+   一天的数据再开始；读取网盘数据前仍需用户确认。
+2. 标注：`.txt` 是 Qwen 0.6B 写入时的原文，不等于正确答案。校对时用豆包输入法对同一录音再听写一遍做交叉校验：
+   两者一致直接采用，不一致的由用户人工裁定；裁定后的文本单独存为校正稿，原文、豆包结果、校正稿和模型版本
+   一一对应，按日期切分训练/验证/测试集。豆包只用于离线校对，不回到实时链路。
+3. 训练：官方 [`finetuning/qwen3_asr_sft.py`](https://github.com/QwenLM/Qwen3-ASR/blob/main/finetuning/README.md)
+   吃 JSONL（`{"audio": "x.wav", "text": "language Chinese<asr_text>…"}`），文档只覆盖 CUDA。
+   M3 上 MPS 能否跑通未验证，备选是租 GPU；训练音频须是同一 Opus 32 kbps 解码后的 16 kHz。
+4. 交付：微调后的权重转 MLX 6-bit（须仍在 1 GB 内），作为可导入模型放进本机缓存目录，不进 Git；
+   以测试集 CER 对比原模型，变好才切换。
+5. 声纹：现有声纹档案（WeSpeaker 256 维）可在训练数据筛选时剔除非本人片段；实时链路暂不做声纹门控，
+   离线提取本人声音见[自训目标说话人提取](../desk-personal-voice-tse-2026-11-07/README.md)。

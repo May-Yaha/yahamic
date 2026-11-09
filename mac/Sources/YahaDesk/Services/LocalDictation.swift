@@ -137,7 +137,8 @@ actor LocalSpeechRecognizer {
 
     static let modelRepository = "mlx-community/Qwen3-ASR-0.6B-6bit"
     static let modelSourceRevision = "468b9b6d692d3397d5d17b84a1166876a00c9bfa"
-    private static let context = "Transcribe only words that are spoken in the audio. Do not append acknowledgements, continuations, or filler words after speech ends."
+    // Qwen3-ASR reads the system context as biasing text; the terms keep English coding words in Latin script.
+    private static let context = "Transcribe only words that are spoken in the audio. Do not append acknowledgements, continuations, or filler words after speech ends. Terms: Claude Code, Codex, swift test, Swift, Xcode, Git, commit, push, PR, merge, branch, API, JSON, README, bug, debug, build, test, ESP32, BLE, Opus, Mac, iOS."
 
     private var model: Qwen3ASRModel?
     private let loader: Loader

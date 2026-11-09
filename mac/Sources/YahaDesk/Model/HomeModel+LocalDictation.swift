@@ -90,10 +90,10 @@ extension HomeModel {
         localSTTStopTask = nil
         uplink?.onAudioTap = nil
         audioCaptureGate.release()
-        transcribe(utterance)
+        transcribe(utterance, take: recordings.currentTake)  // still in its tail window: the take just spoken
     }
 
-    private func transcribe(_ utterance: LocalDictationCapture.Utterance) {
+    private func transcribe(_ utterance: LocalDictationCapture.Utterance, take: Date?) {
         localSTTWorkTask?.cancel()
         localSTTWorkTask = Task { [weak self] in
             guard let self else { return }
@@ -102,6 +102,7 @@ extension HomeModel {
                 guard !Task.isCancelled, localSTTEnabled else { return }
                 if LocalDictationText.commit(text, to: utterance.target) {
                     log("本地转文字:已写入 \(text.count) 个字符")
+                    if let take { recordings.saveTranscript(text.trimmingCharacters(in: .whitespacesAndNewlines), for: take) }
                 } else {
                     log("⚠️ 本地转文字:结果为空或焦点输入框不接受文字")
                 }

@@ -151,3 +151,41 @@ private func pcm(_ samples: [Int16]) -> Data {
     let restored = VoiceProfile(folder: folder) { _ in [] }
     #expect(restored.manifest.remotePaths == [fileName: remotePath])
 }
+
+@MainActor
+@Test func dictationTextIsSavedBesideItsRecordingWhetherItArrivesBeforeOrAfterTheFile() async throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let backup = RecordingBackup(folder: folder)
+    // Expired: recording still runs, upload stays local, so no network is touched.
+    backup.token = { PanToken(token: "pan-test", expires: Date().timeIntervalSince1970) }
+    backup.tail = .milliseconds(20)
+    var clock = Date(timeIntervalSince1970: 1_800_000_000)
+    backup.now = { clock }
+
+    func take() -> Date? {
+        backup.talking(true)
+        for _ in 0..<20 { backup.append(Data(repeating: 0x58, count: 120), samples: 960) }
+        backup.talking(false)
+        return backup.currentTake
+    }
+    let early = try #require(take())
+    backup.saveTranscript("今天下午三点开会", for: early)  // text inside the tail window
+    try await Task.sleep(for: .milliseconds(60))
+    clock += 5
+    let late = try #require(take())
+    try await Task.sleep(for: .milliseconds(60))
+    backup.saveTranscript("git commit 一下", for: late)  // text after the audio file was written
+    backup.saveTranscript("不属于任何录音", for: Date(timeIntervalSince1970: 1))
+
+    func text(_ date: Date) throws -> String {
+        let audio = folder.appendingPathComponent(RecordingBackup.relativePath(date))
+        #expect(FileManager.default.fileExists(atPath: audio.path))
+        return try String(contentsOf: audio.deletingPathExtension().appendingPathExtension("txt"), encoding: .utf8)
+    }
+    #expect(try text(early) == "今天下午三点开会")
+    #expect(try text(late) == "git commit 一下")
+    let all = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil)!.allObjects as! [URL]
+    #expect(all.filter { $0.pathExtension == "txt" }.count == 2)
+    #expect(backup.pending == 2)  // pending counts takes, not their text files
+}

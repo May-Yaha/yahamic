@@ -256,7 +256,7 @@ struct DeviceSetupView: View {
                 .disabled(recordings.busy || !cloud.panLoggedIn)
             }
         } footer: {
-            Text("每次讲话的录音存到网盘兼容目录 /apps/拾见/录音，最多显示最近 100 条。")
+            Text("每次讲话的录音存到网盘兼容目录 /apps/拾见/录音，本地转文字写入的文本以同名 .txt 一起保存；最多显示最近 100 条。")
         }
     }
 

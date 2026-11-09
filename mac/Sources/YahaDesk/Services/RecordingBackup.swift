@@ -26,11 +26,13 @@ final class RecordingBackup: ObservableObject {
     private var closing: Task<Void, Never>?
     private var uploading = false
     private var privateCapture = false
+    private var transcript: String?  // dictation text that arrived while its take was still open
+    private var closed: [Date: URL] = [:]  // recent takes by start, for text that arrives after the file is written
 
     init(folder: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("YahaDesk/Recordings")) {
         self.folder = folder
-        pending = files().count
+        pending = takes()
     }
 
     /// From the link state: talking means connected and unmuted.
@@ -63,11 +65,37 @@ final class RecordingBackup: ObservableObject {
         if active { finish() }
     }
 
+    /// Start of the take being recorded, nil when nothing is recorded (e.g. not logged in to Pan).
+    var currentTake: Date? { writer == nil ? nil : started }
+
+    /// Stores the dictation text inserted for `take` as `HHmmss.txt` beside its audio and uploads it with the
+    /// recordings, so every take carries the text that was typed for it.
+    func saveTranscript(_ text: String, for take: Date) {
+        if writer != nil, started == take {
+            transcript = text  // finish() writes it with the audio
+        } else if let audio = closed[take] {
+            write(text, beside: audio)
+            Task { await upload() }
+        }
+    }
+
+    private func write(_ text: String, beside audio: URL) {
+        let url = audio.deletingPathExtension().appendingPathExtension("txt")
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(text.utf8).write(to: url, options: .atomic)
+        } catch {
+            log("⚠️ 转写文本保存失败:\(error.localizedDescription)")
+        }
+    }
+
     private func finish() {
         closing?.cancel()
         closing = nil
         guard let w = writer else { return }
         writer = nil
+        let text = transcript
+        transcript = nil
         guard w.samples48k >= Self.minimumSamples48k else { return }
         let base = folder.appendingPathComponent(Self.relativePath(started))
         var url = base, n = 0
@@ -79,6 +107,10 @@ final class RecordingBackup: ObservableObject {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try w.finish().write(to: url, options: .atomic)
             log(String(format: "录音 %.1f 秒,待备份到网盘", Double(w.samples48k) / 48_000))
+            // ponytail: keeps the last 8 takes; dictation text arrives seconds later, never 8 takes later.
+            if closed.count >= 8, let oldest = closed.keys.min() { closed[oldest] = nil }
+            closed[started] = url
+            if let text { write(text, beside: url) }
         } catch {
             log("⚠️ 录音保存失败:\(error.localizedDescription)")
         }
@@ -88,14 +120,14 @@ final class RecordingBackup: ObservableObject {
     /// Uploads every local recording, oldest first, including takes finished meanwhile; stops at the first failure
     /// and keeps the rest for next time.
     func upload() async {
-        pending = files().count
-        guard !uploading, pending > 0 else { return }
+        pending = takes()
+        guard !uploading, !files().isEmpty else { return }
         guard let token = token(), token.valid() else {
             message = "\(pending) 段录音待备份,登录网盘后自动上传"
             return
         }
         uploading = true
-        defer { uploading = false; pending = files().count }
+        defer { uploading = false; pending = takes() }
         let pan = client(token)
         while let url = files().first {
             // Date folder + file name; a prefix cut breaks when the enumerator resolves symlinks (/var → /private/var).
@@ -121,7 +153,7 @@ final class RecordingBackup: ObservableObject {
         guard let token = token(), token.valid() else { message = "登录网盘后可查看已备份的录音"; return }
         busy = true
         defer { busy = false }
-        do { items = try await client(token).recent() } catch { message = error.localizedDescription }
+        do { items = try await client(token).recent().filter { $0.path.hasSuffix(".opus") } } catch { message = error.localizedDescription }
     }
 
     private func client(_ token: PanToken) -> PanFiles {
@@ -129,10 +161,13 @@ final class RecordingBackup: ObservableObject {
         return PanFiles(token: token.token, log: { line in Task { @MainActor in log(line) } }, session: session)
     }
 
+    /// Audio first within a take: `HHmmss.opus` sorts before its `HHmmss.txt`.
     private func files() -> [URL] {
         let all = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? []
-        return all.filter { $0.pathExtension == "opus" }.sorted { $0.path < $1.path }
+        return all.filter { ["opus", "txt"].contains($0.pathExtension) }.sorted { $0.path < $1.path }
     }
+
+    private func takes() -> Int { files().filter { $0.pathExtension == "opus" }.count }
 
     /// `YYYY-MM-DD/HHmmss.opus` in local time, both the local layout and the path under PanFiles.root.
     static func relativePath(_ date: Date, in zone: TimeZone = .current) -> String {
