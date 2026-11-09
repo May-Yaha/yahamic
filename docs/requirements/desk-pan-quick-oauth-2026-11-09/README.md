@@ -28,7 +28,7 @@
 2. 回调：百度直接跳到 `yahadesk://oauth?code&state`，不经过任何网页。
    - Mac：`ASWebAuthenticationSession` 按 `yahadesk` scheme 截获；App 也在 Info.plist 注册该 scheme，
      浏览器经系统打开时由 `application(_:open:)` 交回同一登录会话，state 校验不变。
-   - iOS：WKWebView 在跳往回调地址前取消导航。
+   - iOS：与 Mac 共用同一 `ASWebAuthenticationSession` 实现，按 `yahadesk` scheme 截获（2026-11-09 起，原 WKWebView 拦截已删除）。
 3. 换取/续期：`POST /api/v1/baidu-pan/desk/token`，body 为 `{"code"}` 或 `{"refresh_token"}`；
    返回百度 `data` 原样字段。10403 表示 code/refresh_token 已失效，只能重新登录。
 4. App 校验 `authorized_paths` 为空或覆盖 `/apps/拾见/录音`；不覆盖即报错，不保存。

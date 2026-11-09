@@ -1,12 +1,11 @@
 import Foundation
 import Security
 import DeskProtocol
+import AuthenticationServices
 #if os(macOS)
 import AppKit
-import AuthenticationServices
 #elseif os(iOS)
 import UIKit
-import WebKit
 #endif
 
 /// Baidu Pan quick authorization (code grant with directory selection). The AppKey is a public client id; the
@@ -175,11 +174,13 @@ extension PanKeychain {
     }
 }
 
-#if os(macOS)
+/// Same flow on Mac and iOS: the system browser sheet opens the authorize page and catches the `yahadesk://` callback.
 @MainActor
 final class PanLoginWindow: NSObject, ASWebAuthenticationPresentationContextProviding {
     private let state = OAuthPKCE.random()
+    #if os(macOS)
     private let fallbackAnchor = NSWindow()
+    #endif
     private var session: ASWebAuthenticationSession?
     private var completion: CheckedContinuation<String, Error>?
     private static var current: PanLoginWindow?
@@ -237,7 +238,9 @@ final class PanLoginWindow: NSObject, ASWebAuthenticationPresentationContextProv
             finish(.failure(DeskProtocolError("网盘登录未完成或被拒绝")))
             return
         }
+        #if os(macOS)
         NSApp.activate()
+        #endif
         finish(.success(code))
     }
 
@@ -251,83 +254,11 @@ final class PanLoginWindow: NSObject, ASWebAuthenticationPresentationContextProv
     }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: \.isVisible) ?? fallbackAnchor
+        #if os(macOS)
+        return NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: \.isVisible) ?? fallbackAnchor
+        #else
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        return scenes.first { $0.activationState == .foregroundActive }?.keyWindow ?? scenes.first?.keyWindow ?? ASPresentationAnchor()
+        #endif
     }
 }
-#elseif os(iOS)
-@MainActor
-final class PanLoginWindow: NSObject, WKNavigationDelegate, UIAdaptivePresentationControllerDelegate {
-    private let state = OAuthPKCE.random()
-    private var controller: UIViewController?
-    private var completion: CheckedContinuation<String, Error>?
-    private static var current: PanLoginWindow?
-
-    /// Browser login yields a one-time code (10 minutes); the hub exchanges it for the token pair.
-    static func run() async throws -> PanToken {
-        current?.finish(.failure(CancellationError()))
-        let login = PanLoginWindow()
-        current = login
-        let code = try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { completion in
-                login.completion = completion
-                login.show()
-            }
-        } onCancel: {
-            Task { @MainActor in login.finish(.failure(CancellationError())) }
-        }
-        return try await PanLogin.exchange(code: code)
-    }
-
-    private func show() {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        let web = WKWebView(frame: .zero, configuration: configuration)
-        web.navigationDelegate = self
-        let controller = UIViewController()
-        controller.view = web
-        controller.title = "登录百度网盘"
-        let navigation = UINavigationController(rootViewController: controller)
-        navigation.modalPresentationStyle = .formSheet
-        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: {
-            $0.activationState == .foregroundActive
-        }), let root = scene.windows.first(where: \.isKeyWindow)?.rootViewController else {
-            finish(.failure(DeskProtocolError("请回到应用后再登录网盘")))
-            return
-        }
-        var presenter = root
-        while let presented = presenter.presentedViewController { presenter = presented }
-        self.controller = navigation
-        presenter.present(navigation, animated: true)
-        navigation.presentationController?.delegate = self
-        web.load(URLRequest(url: PanLogin.authorizeURL(state: state)))
-    }
-
-    private func finish(_ result: Result<String, Error>) {
-        guard let completion else { return }
-        self.completion = nil
-        controller?.dismiss(animated: true)
-        controller = nil
-        if Self.current === self { Self.current = nil }
-        completion.resume(with: result)
-    }
-
-    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
-                 decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
-        guard let url = action.request.url else { return decisionHandler(.allow) }
-        switch PanLogin.navigation(url, state: state) {
-        case .allow:
-            decisionHandler(.allow)
-        case .reject:
-            decisionHandler(.cancel)
-            finish(.failure(DeskProtocolError("网盘登录未完成或被拒绝")))
-        case let .code(code):
-            decisionHandler(.cancel)
-            finish(.success(code))
-        }
-    }
-
-    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-        finish(.failure(CancellationError()))
-    }
-}
-#endif
