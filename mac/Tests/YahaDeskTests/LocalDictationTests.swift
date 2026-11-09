@@ -112,7 +112,7 @@ struct LocalDictationTests {
         #expect(await overlay.review("swift test", autoInsertAfter: 0.05) == "swift test")
 
         async let edited = overlay.review("swift test", autoInsertAfter: 0.05)
-        await Task.yield()
+        await waitForReview(overlay)
         overlay.beginEditing()
         overlay.text = "swift test 通过"
         try? await Task.sleep(for: .milliseconds(150))  // past the auto-insert deadline
@@ -121,14 +121,19 @@ struct LocalDictationTests {
         #expect(await edited == "swift test 通过")
 
         async let cancelled = overlay.review("不要", autoInsertAfter: 10)
-        await Task.yield()
+        await waitForReview(overlay)
         overlay.cancel()
         #expect(await cancelled == nil)
 
         async let stopped = overlay.review("关掉本地转文字", autoInsertAfter: 10)
-        await Task.yield()
+        await waitForReview(overlay)
         overlay.finishTranscribing()  // stopLocalSTT 走这里,不能把等待中的修改挂住
         #expect(await stopped == nil)
+    }
+
+    /// `async let` 子任务何时跑到 review() 不确定,等到它挂起在确认上再操作。
+    private func waitForReview(_ overlay: TalkOverlay) async {
+        for _ in 0..<200 where overlay.phase != .review { try? await Task.sleep(for: .milliseconds(5)) }
     }
 
     @Test func localDictationAndPushToTalkCannotDiverge() {
