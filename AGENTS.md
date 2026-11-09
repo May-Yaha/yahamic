@@ -16,3 +16,10 @@
 - Mac App 预置服务地址和公开 Client ID；需要密钥的官方控制连接只从安装方已获授权的来源写入本机钥匙串。新机没有该来源时应报告安装配置未完成并停止连接，不猜测、跨账号提取或把密钥写入源码、Git、日志、命令输出、分发资源和固件。浏览器登录、PKCE 同意与设备专用 `desk.sync` 授权不得绕过。
 - 固件系统界面和固定文案使用简体中文，并核对字库覆盖、字号与屏幕宽度；动态通知保留来源原文，不擅自翻译或改写。协议字段、日志、标准单位与专有名称继续遵循既有契约。
 - 构建、测试或模拟器通过不等于获准安装、烧录、上传商店或发布；这些外部动作仍需用户逐次明确授权。
+
+## 百度网盘登录（快速授权）
+
+- 链路：App 打开授权页拿 code，回调 `yahadesk://oauth` 直达 App；code 换令牌与续期走 hub `POST /api/v1/baidu-pan/desk/token`。百度换取必须带 `client_secret`（不带返回 20025），所以不能改成 App 直连百度，SecretKey 不得进入本开源仓库或安装包。
+- App 的 `PanLogin.appKey` 必须与 hub 环境的 AppKey/SecretKey 属同一百度应用（AppID 124461637）。不一致时换取报 20038，登记在该应用下的回调也会报 20030。
+- 回调地址由用户在百度控制台登记，未经同意不改 `redirect_uri`；登记清单见 `docs/requirements/desk-pan-quick-oauth-2026-11-09/README.md`。
+- 排障先看 errno：Mac 日志 `~/Library/Logs/YahaDesk.log` 的「网盘登录失败」行带 hub 透传的百度 errno。用假 code 请求 hub 返回 10401（而非 10506）说明 hub 自身密钥匹配。hub 由用户在服务器上手动发布，改完服务端先确认线上版本再复测。
