@@ -92,3 +92,7 @@ TypeWhisper 的录音器、热键、插件宿主、历史和订阅系统会产�
   build 与 dev App 资源装配通过。该证据验证运行链，不替代真实用户语音的 Paraformer/Qwen A/B。
 - 2026-11-08：iOS `build-for-testing` 与 ESP-IDF 6.1 干净构建通过；本机缺少可启动的 iOS
   Simulator runtime，固件未刷写真机，均保留为未验证边界。本轮不上传或发布任何 App/固件。
+- 2026-11-09：用户要求去掉对输入法的依赖。删除面板「听写输入法」卡片、`DictationIME`、
+  `connectIME`/`restoreInput` 与 DeskCore 的系统默认输入读写；新装默认打开「本地转文字」，
+  已有用户的开关值不变。固件、BLE/Opus、BlackHole 出口未改。完整 `swift test` 88 项通过，
+  其中真实 Qwen 测试用本机已下载快照与 Tingting 合成的 16 kHz PCM 跑通；真人语音 A/B 仍未验。

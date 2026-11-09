@@ -4,7 +4,7 @@ import SwiftUI
 // 讲话浮层:按住讲话键时在屏幕底部居中出现的玻璃胶囊,松开 0.3 秒后消失
 // (形态参考 VoiceInk Mini Recorder / Handy overlay)。听写时视线在光标处,
 // 菜单栏面板是收着的,所以开麦与否要在这里看。
-// NSPanel 不激活、不接鼠标:豆包要往当前光标处出字,浮层绝不能抢焦点。
+// NSPanel 不激活、不接鼠标:本地转文字要往当前光标处出字,浮层绝不能抢焦点。
 @MainActor
 final class TalkOverlay: ObservableObject {
     enum Phase { case hidden, arming, live, offline, transcribing }

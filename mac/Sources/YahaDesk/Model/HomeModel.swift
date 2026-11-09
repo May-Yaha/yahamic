@@ -19,7 +19,6 @@ final class HomeModel: ObservableObject {
     // —— 运行状态 ——
     @Published var logs: [String] = []
     @Published var outputs: [OutputDevice] = []
-    @Published private(set) var defaultInput = "-"  // 系统默认输入设备名(听写输入法从这里取声)
     @Published var audioError: String?
     @Published var fnAvailable = false
     @Published var needsAccessibility = false  // 需要辅助功能权限(界面显示申请卡片)
@@ -107,7 +106,7 @@ final class HomeModel: ObservableObject {
 
     private init() {
         let storedPTT = defaults.object(forKey: "ptt") as? Bool ?? true
-        let storedLocalSTT = defaults.object(forKey: "localSTT") as? Bool ?? false
+        let storedLocalSTT = defaults.object(forKey: "localSTT") as? Bool ?? true
         pttEnabled = storedLocalSTT || storedPTT
         localSTTEnabled = storedLocalSTT
         if storedLocalSTT, !storedPTT { defaults.set(true, forKey: "ptt") }
@@ -228,44 +227,6 @@ final class HomeModel: ObservableObject {
 
     func refreshOutputs() {
         outputs = DeskCore.outputDevices().sorted { $0.name < $1.name }
-        defaultInput = DeskCore.defaultInputName() ?? "-"
-    }
-
-    // MARK: 听写输入法
-
-    /// 本机装了的听写输入法(看 /Library/Input Methods 下的 App 是否存在)。
-    var installedIMEs: [DictationIME] {
-        DictationIME.allCases.filter { FileManager.default.fileExists(atPath: $0.settingsApp) }
-    }
-
-    /// 一键接入:系统默认输入切到虚拟麦克风(微信输入法只认系统默认,豆包选「跟随系统」也走这条),
-    /// 再打开输入法设置。语音快捷键与麦克风选项在输入法私有配置里,没有接口可写,只能提示用户确认。
-    func connectIME(_ ime: DictationIME) {
-        let target = outputDeviceName
-        if let current = DeskCore.defaultInputName(), current != target {
-            defaults.set(current, forKey: "previousInput")
-        }
-        if DeskCore.setDefaultInput(named: target) {
-            log("系统默认输入 → \(target)(\(ime.title)听写用)")
-        } else {
-            log("⚠️ 没找到输入设备 \(target),先装 BlackHole")
-        }
-        NSWorkspace.shared.open(URL(fileURLWithPath: ime.settingsApp))
-        refreshOutputs()
-    }
-
-    /// 还原接入前的系统默认输入。
-    var previousInput: String? { defaults.string(forKey: "previousInput") }
-
-    func restoreInput() {
-        guard let name = previousInput else { return }
-        if DeskCore.setDefaultInput(named: name) {
-            log("系统默认输入还原 → \(name)")
-            defaults.removeObject(forKey: "previousInput")
-        } else {
-            log("⚠️ 还原失败:找不到输入设备 \(name)")
-        }
-        refreshOutputs()
     }
 
     private func startAudio() {
@@ -571,16 +532,5 @@ final class HomeModel: ObservableObject {
         logs.append(line)
         if logs.count > 300 { logs.removeFirst(logs.count - 300) }
         if let data = (line + "\n").data(using: .utf8) { logHandle?.write(data) }
-    }
-}
-
-enum DictationIME: CaseIterable {
-    case doubao, wetype
-
-    var title: String { self == .doubao ? "豆包" : "微信" }
-    var settingsApp: String {
-        self == .doubao
-            ? "/Library/Input Methods/DoubaoIme.app/Contents/Applications/DoubaoImeSettings.app"
-            : "/Library/Input Methods/WeType.app/Contents/MacOS/WeTypeSettings.app"
     }
 }

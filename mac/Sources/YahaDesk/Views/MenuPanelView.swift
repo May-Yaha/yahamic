@@ -102,40 +102,11 @@ struct MenuPanelView: View {
                 Spacer(minLength: 0)
             }
             .controlTile()
-            if !model.installedIMEs.isEmpty { imeTile }
         }
         // 权限行显隐过渡:淡入+顶部移入,可打断
         .animation(.snappy(duration: 0.25), value: model.pttEnabled)
         .animation(.snappy(duration: 0.25), value: model.fnAvailable)
         .animation(.snappy(duration: 0.25), value: model.listenPermission.granted)
-    }
-
-    /// 听写输入法一键接入:切系统默认输入 + 打开输入法设置;快捷键只能用户自己设,这里给出要设成什么。
-    private var imeTile: some View {
-        let linked = model.defaultInput == model.outputDeviceName
-        return VStack(alignment: .leading, spacing: PanelSpacing.row) {
-            HStack(spacing: PanelSpacing.row) {
-                CircleIcon(symbol: "character.bubble.fill", tint: linked ? .green : nil)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("听写输入法").font(.subheadline.weight(.medium))
-                    Text("系统输入:\(model.defaultInput)").font(.caption).foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                ForEach(model.installedIMEs, id: \.self) { ime in
-                    Button("接入\(ime.title)") { model.connectIME(ime) }.controlSize(.small)
-                }
-            }
-            if linked {
-                Text("在输入法设置里:麦克风选「\(model.outputDeviceName)」或「跟随系统」,语音输入快捷键设为长按\(model.talkKey.title)")
-                    .font(.caption2).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let previous = model.previousInput {
-                    Button("还原系统输入为 \(previous)") { model.restoreInput() }.controlSize(.small)
-                }
-            }
-        }
-        .controlTile()
     }
 
     private var deviceNames: [String] {
