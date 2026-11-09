@@ -1,6 +1,7 @@
 #!/bin/bash
 # 把 Yaha Desk 打包成 .app:构建 → 图标 → Info.plist → 签名。三条渠道同一份代码:
 #   scripts/make-app.sh [--install]           dev:Apple Development 签名,本机自用(默认)
+#   scripts/make-app.sh --dmg                 内部分发:dev 签名的 .app 装进 dmg(未公证:首次打开被拦后到 系统设置→隐私与安全性 点「仍要打开」)
 #   scripts/make-app.sh devid [--install]     官网分发:Developer ID + hardened runtime + 公证
 #   scripts/make-app.sh appstore              Mac App Store:-DAPP_STORE 沙盒版 + pkg,不上传
 # 公证需先由用户自己存好凭据(密码不经 agent):
@@ -11,10 +12,12 @@ cd "$(dirname "$0")/.."
 
 CHANNEL="dev"
 INSTALL=""
+DMG=""
 for arg in "$@"; do
   case "$arg" in
     dev|devid|appstore) CHANNEL="$arg" ;;
     --install) INSTALL=1 ;;
+    --dmg) DMG=1 ;;
     *) echo "未知参数:$arg"; exit 2 ;;
   esac
 done
@@ -206,6 +209,17 @@ if [ "$CHANNEL" = "devid" ]; then
     ZIP="${ZIP%.zip}-unnotarized.zip"
   fi
   echo "✓ 官网分发包:$ZIP"
+fi
+
+if [ -n "$DMG" ]; then
+  STAGE="$BUILD_DIR/dmg"
+  rm -rf "$STAGE" && mkdir -p "$STAGE"
+  cp -R "$APP" "$STAGE/" && ln -s /Applications "$STAGE/Applications"
+  DMG_PATH="$BUILD_DIR/$APP_NAME-$VERSION.dmg"
+  rm -f "$DMG_PATH"
+  hdiutil create -quiet -volname "$DISPLAY_NAME $VERSION" -srcfolder "$STAGE" -format UDZO "$DMG_PATH"
+  rm -rf "$STAGE"
+  echo "✓ 内部分发包:$DMG_PATH"
 fi
 
 if [ "$CHANNEL" = "appstore" ]; then
