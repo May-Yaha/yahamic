@@ -17,7 +17,7 @@ final class YahaDeskIOSTests: XCTestCase {
         XCTAssertEqual(PanLogin.navigation(URL(string: "https://pan.baidu.com/union/oauth/authorize?x=1")!, state: "ok"), .allow)
         let authorization = URLComponents(url: PanLogin.authorizeURL(state: "ok"), resolvingAgainstBaseURL: false)!
         XCTAssertEqual(authorization.queryItems?.first { $0.name == "redirect_uri" }?.value, callback)
-        XCTAssertEqual(authorization.queryItems?.first { $0.name == "show_dir" }?.value, "1")
+        XCTAssertNil(authorization.queryItems?.first { $0.name == "show_dir" })
     }
 
     func testWiFiCommandUsesExistingFirmwarePayload() throws {

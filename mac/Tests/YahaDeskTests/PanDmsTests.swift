@@ -25,7 +25,7 @@ import DeskProtocol
     #expect(authorization.host == "pan.baidu.com" && authorization.path == "/union/oauth/authorize")
     let query = Dictionary(uniqueKeysWithValues: authorization.queryItems!.map { ($0.name, $0.value ?? "") })
     #expect(query == ["client_id": PanLogin.appKey, "redirect_uri": "com.yaha.desk:/baidu-pan/oauth", "scope": "nd_open_read,nd_open_write",
-                      "show_dir": "1", "state": state])
+                      "state": state])
 }
 
 @Test func panTokenReplyRequiresAPairAndTheRecordingDirectory() throws {

@@ -29,12 +29,11 @@ enum PanLogin {
     /// The server rejected the code or refresh token: only a new login helps.
     struct Rejected: LocalizedError { let errorDescription: String? }
 
-    /// show_dir=1 is the directory-grant flag read by Baidu's authorize page; the user picks /apps/拾见 or 录音.
+    /// No directory picker: the app only ever touches PanFiles.root, which parseToken checks against the grant.
     static func authorizeURL(state: String) -> URL {
         var c = URLComponents(string: "https://pan.baidu.com/union/oauth/authorize")!
         c.queryItems = [.init(name: "client_id", value: appKey), .init(name: "redirect_uri", value: redirectURI.absoluteString),
-                        .init(name: "scope", value: "nd_open_read,nd_open_write"), .init(name: "show_dir", value: "1"),
-                        .init(name: "state", value: state)]
+                        .init(name: "scope", value: "nd_open_read,nd_open_write"), .init(name: "state", value: state)]
         return c.url!
     }
 
@@ -102,7 +101,7 @@ enum PanLogin {
         }
         let paths = g.authorized_paths ?? []
         guard covers(paths) else {
-            throw DeskProtocolError("授权目录不含 \(PanFiles.root)，请重新登录并在百度授权页勾选「/apps/拾见」或「录音」目录")
+            throw DeskProtocolError("授权目录不含 \(PanFiles.root)，请检查百度控制台的目录授权配置后重新登录")
         }
         return PanToken(token: g.access_token, expires: now.addingTimeInterval(g.expires_in).timeIntervalSince1970,
                         refresh: g.refresh_token, paths: paths)
