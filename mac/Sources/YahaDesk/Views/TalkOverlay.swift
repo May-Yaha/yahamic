@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// 讲话浮层:按住讲话键满 1 秒后在屏幕底部居中出现的玻璃胶囊,松开 0.3 秒后消失
+// 讲话浮层:按住讲话键满 1 秒后在鼠标指针下方出现的玻璃胶囊,松开 0.3 秒后消失
 // (形态参考 VoiceInk Mini Recorder / Handy overlay)。听写时视线在光标处,
 // 菜单栏面板是收着的,所以开麦与否、实时字幕都在这里看。
 // NSPanel 不激活、不接鼠标:本地转文字要往当前光标处出字。只有松开后的修改阶段临时接键盘
@@ -115,11 +115,13 @@ final class TalkOverlay: ObservableObject {
         let size = Self.size
         let panel = self.panel ?? makePanel(size: size)
         self.panel = panel
-        // 跟着鼠标所在的屏幕;胶囊底边在 Dock 之上 40pt,面板其余部分透明。
+        // 胶囊顶边在鼠标指针下方 24pt,字幕/修改框接在胶囊下面;贴边时收进屏幕可见区。面板其余部分透明。
         let mouse = NSEvent.mouseLocation
         if let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main {
             let area = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: area.midX - size.width / 2, y: area.minY + 40))
+            let x = min(max(mouse.x - size.width / 2, area.minX), area.maxX - size.width)
+            let y = min(max(mouse.y - 24 - size.height, area.minY), area.maxY - size.height)
+            panel.setFrameOrigin(NSPoint(x: x, y: y))
         }
         let reviewing = phase == .review
         panel.keyable = reviewing
@@ -157,16 +159,16 @@ private struct TalkOverlayView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Spacer(minLength: 0)
+            capsule
             if overlay.phase == .review {
                 ReviewCard(overlay: overlay)
             } else if !overlay.text.isEmpty, overlay.phase == .live || overlay.phase == .transcribing {
                 CaptionText(text: overlay.text)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .glassEffect(.regular, in: .rect(cornerRadius: 14))
-                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
-            capsule
+            Spacer(minLength: 0)
         }
         .animation(.smooth(duration: 0.25), value: overlay.text)  // 字幕框随字数平滑长高
         .animation(.smooth(duration: 0.25), value: overlay.phase)

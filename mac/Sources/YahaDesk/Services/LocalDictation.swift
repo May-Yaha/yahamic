@@ -49,10 +49,16 @@ final class FocusedTextTarget: DictationTextTarget {
         guard let front = NSWorkspace.shared.frontmostApplication,
               front.processIdentifier != ProcessInfo.processInfo.processIdentifier
         else { return nil }
-        // 如流(Flutter)系统级查询报 -25204,按 App 查才拿得到焦点输入框。
-        let element = focused(in: AXUIElementCreateSystemWide())
-            ?? focused(in: AXUIElementCreateApplication(front.processIdentifier))
+        // 如流等 Flutter 应用:AX 写选区返回成功、AXValue 也变了,但只改了无障碍树,输入框里没有字;
+        // 一律走粘贴。
+        let element = isFlutter(front) ? nil : focused(in: AXUIElementCreateSystemWide())
         return FocusedTextTarget(element: element, app: front.processIdentifier)
+    }
+
+    private static func isFlutter(_ app: NSRunningApplication) -> Bool {
+        guard let bundle = app.bundleURL else { return false }
+        let framework = bundle.appendingPathComponent("Contents/Frameworks/FlutterMacOS.framework")
+        return FileManager.default.fileExists(atPath: framework.path)
     }
 
     private static func focused(in root: AXUIElement) -> AXUIElement? {
