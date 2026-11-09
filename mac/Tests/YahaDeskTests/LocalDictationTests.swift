@@ -81,6 +81,27 @@ struct LocalDictationTests {
         #expect(target.inserted == ["今天下午三点开会。"])
     }
 
+    @Test func reviewReturnsTheEditedDraftOnConfirmAndNothingOnCancel() async {
+        let overlay = TalkOverlay()
+        async let first = overlay.review("swift test")
+        await Task.yield()
+        #expect(overlay.phase == .review)
+        overlay.text = "swift test 通过"
+        overlay.confirm()
+        #expect(await first == "swift test 通过")
+        #expect(overlay.phase == .hidden)
+
+        async let second = overlay.review("不要")
+        await Task.yield()
+        overlay.cancel()
+        #expect(await second == nil)
+
+        async let third = overlay.review("关掉本地转文字")
+        await Task.yield()
+        overlay.finishTranscribing()  // stopLocalSTT 走这里,不能把等待中的确认挂住
+        #expect(await third == nil)
+    }
+
     @Test func localDictationAndPushToTalkCannotDiverge() {
         let model = HomeModel.shared
         let savedPTT = model.pttEnabled

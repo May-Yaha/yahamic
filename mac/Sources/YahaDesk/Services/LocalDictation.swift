@@ -10,6 +10,7 @@ enum LocalSTTState: Equatable {
     case ready
     case listening
     case transcribing
+    case reviewing
     case failed(String)
 
     var detail: String {
@@ -20,6 +21,7 @@ enum LocalSTTState: Equatable {
         case .ready: return "按住讲话，松开输入"
         case .listening: return "正在收音"
         case .transcribing: return "正在转文字"
+        case .reviewing: return "回车插入，Esc 取消"
         case .failed(let message): return message
         }
     }
