@@ -181,15 +181,15 @@ private struct TalkOverlayView: View {
             if overlay.phase == .review {
                 ReviewCard(overlay: overlay)
             } else if !overlay.text.isEmpty, overlay.phase == .live || overlay.phase == .transcribing {
-                Text(overlay.text)
-                    .font(.callout)
-                    .lineLimit(3)
-                    .truncationMode(.head)  // 长句只看最新的部分
+                CaptionText(text: overlay.text)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .glassEffect(.regular, in: .rect(cornerRadius: 14))
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
             }
             capsule
         }
+        .animation(.smooth(duration: 0.25), value: overlay.text)  // 字幕框随字数平滑长高
+        .animation(.smooth(duration: 0.25), value: overlay.phase)
         .frame(width: TalkOverlay.size.width, height: TalkOverlay.size.height)
     }
 
@@ -237,6 +237,61 @@ private struct TalkOverlayView: View {
         }
         .frame(height: 15)
         .animation(.linear(duration: 0.06), value: overlay.levels)
+    }
+}
+
+/// 实时字幕:每次刷新只让新出现或被改写的字浮现(由虚变实、由模糊到清晰、轻微上移),已有的字不动。
+private struct CaptionText: View {
+    let text: String
+    @State private var shown = ""
+    @State private var fresh = 0  // 末尾正在浮现的字数
+    @State private var progress = 1.0
+
+    var body: some View {
+        Text(shown)
+            .font(.callout)
+            .lineLimit(3)
+            .truncationMode(.head)  // 长句只看最新的部分
+            .textRenderer(FreshGlyphs(fresh: fresh, progress: progress))
+            .onAppear { update(text) }
+            .onChange(of: text) { _, new in update(new) }
+    }
+
+    private func update(_ new: String) {
+        let kept = zip(shown, new).prefix { $0 == $1 }.count
+        shown = new
+        fresh = new.count - kept
+        progress = 0
+        withAnimation(.easeOut(duration: 0.35)) { progress = 1 }
+    }
+}
+
+/// 按字形从末尾数:截掉开头(truncationMode .head)也不影响哪些字是新的。
+private struct FreshGlyphs: TextRenderer, Animatable {
+    var fresh: Int
+    var progress: Double
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func draw(layout: Text.Layout, in ctx: inout GraphicsContext) {
+        let glyphs = layout.flatMap { $0 }.flatMap { $0 }
+        let first = glyphs.count - fresh
+        for (i, glyph) in glyphs.enumerated() {
+            guard i >= first, progress < 1 else {
+                ctx.draw(glyph)
+                continue
+            }
+            // 越靠后的字起步越晚,连起来像一个个打出来。
+            let stagger = fresh > 1 ? Double(i - first) / Double(fresh) * 0.5 : 0
+            let p = min(1, max(0, (progress - stagger) / (1 - stagger)))
+            var g = ctx
+            g.opacity = p
+            g.addFilter(.blur(radius: (1 - p) * 4))
+            g.translateBy(x: 0, y: (1 - p) * 5)
+            g.draw(glyph)
+        }
     }
 }
 
