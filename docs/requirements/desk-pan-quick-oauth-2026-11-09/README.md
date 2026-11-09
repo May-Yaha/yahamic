@@ -11,6 +11,17 @@
 
 ## 链路
 
+### 百度控制台回调地址（用户登记，固定不改）
+
+| 地址 | 用途 |
+| --- | --- |
+| `com.yaha.desk:/baidu-pan/oauth` | Yaha Desk Mac/iOS 快速授权（App 与 hub 换取 code 时使用） |
+| `https://hub.flyaha.top/api/v1/baidu-pan/callback` | hub 门户网页授权 |
+| `yahadesk://oauth` | 历史登记，当前代码不使用 |
+| `http://localhost:8902/baidu/oauth` | 本地调试，当前代码不使用 |
+
+改动 App 或 hub 的 `redirect_uri` 前必须先征得用户同意，并同步修改百度控制台与本表。
+
 1. 授权页：`/union/oauth/authorize?client_id&redirect_uri=com.yaha.desk:/baidu-pan/oauth&scope=nd_open_read,nd_open_write&show_dir=1&state`。
    `show_dir=1` 来自百度授权页脚本，官方文档只写“目录级授权必须传递目录级授权标识”。
    回调地址由用户在百度控制台登记；换取 code 时 hub 固定传同一地址。
