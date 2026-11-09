@@ -85,6 +85,10 @@ extension HomeModel {
     }
 
     private func requestLocalDictationStop() {
+        guard localDictationCapture.held >= TalkOverlay.holdDelay else {
+            if abortLocalDictation() { log("本地转文字:按住不到 1 秒,当误触忽略") }
+            return
+        }
         guard localDictationCapture.requestStop() else { return }
         localSTTPreviewTask?.cancel()
         localSTTPreviewTask = nil
@@ -117,22 +121,11 @@ extension HomeModel {
         localSTTWorkTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let draft = try await localSpeech.transcribe(utterance.pcm)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let text = try await localSpeech.transcribe(utterance.pcm)
                 guard !Task.isCancelled, localSTTEnabled else { return }
-                if draft.isEmpty {
-                    log("⚠️ 本地转文字:没有识别出文字")
-                    overlay.finishTranscribing()
-                } else {
-                    localSTTState = .reviewing
-                    let confirmed = await overlay.review(draft)
-                    guard !Task.isCancelled, localSTTEnabled else { return }
-                    if let confirmed {
-                        commitDictation(confirmed, to: utterance.target, take: take)
-                    } else {
-                        log("本地转文字:已取消,未写入")
-                    }
-                }
+                overlay.showPartial(text)  // 定稿替换最后一轮字幕,浮层随即收起
+                commitDictation(text, to: utterance.target, take: take)
+                overlay.finishTranscribing()
             } catch {
                 guard !Task.isCancelled, localSTTEnabled else { return }
                 log("⚠️ 本地转文字失败:\(error.localizedDescription)")
@@ -143,7 +136,7 @@ extension HomeModel {
         }
     }
 
-    /// 用户确认后的文字才写入输入框,并作为这段录音的 .txt 随录音备份(微调时的标注)。
+    /// 写入按键时的输入框,并作为这段录音的 .txt 随录音备份(微调时的标注)。
     func commitDictation(_ text: String, to target: any DictationTextTarget, take: Date?) {
         guard LocalDictationText.commit(text, to: target) else {
             log("⚠️ 本地转文字:结果为空或焦点输入框不接受文字")
@@ -172,15 +165,22 @@ extension HomeModel {
     }
 
     func cancelLocalDictationForListenerChange() {
-        guard localDictationCapture.cancel() else { return }
+        guard abortLocalDictation() else { return }
+        overlay.finishTranscribing()
+        log("本地转文字:讲话键监听变化，已取消本次采集")
+    }
+
+    /// 丢掉进行中的采集,不转写。
+    @discardableResult
+    private func abortLocalDictation() -> Bool {
+        guard localDictationCapture.cancel() else { return false }
         localSTTPreviewTask?.cancel()
         localSTTPreviewTask = nil
         localSTTStopTask?.cancel()
         localSTTStopTask = nil
         uplink?.onAudioTap = nil
         audioCaptureGate.release()
-        overlay.finishTranscribing()
         localSTTState = localSTTEnabled ? .ready : .disabled
-        log("本地转文字:讲话键监听变化，已取消本次采集")
+        return true
     }
 }

@@ -10,7 +10,6 @@ enum LocalSTTState: Equatable {
     case ready
     case listening
     case transcribing
-    case reviewing
     case failed(String)
 
     var detail: String {
@@ -21,7 +20,6 @@ enum LocalSTTState: Equatable {
         case .ready: return "按住讲话，松开输入"
         case .listening: return "正在收音"
         case .transcribing: return "正在转文字"
-        case .reviewing: return "回车插入，Esc 取消"
         case .failed(let message): return message
         }
     }
@@ -53,14 +51,36 @@ final class FocusedTextTarget: DictationTextTarget {
 
     func insert(_ text: String) -> Bool {
         var settable = DarwinBoolean(false)
-        guard
-            AXUIElementIsAttributeSettable(
-                element, kAXSelectedTextAttribute as CFString, &settable
-            ) == .success, settable.boolValue,
+        if AXUIElementIsAttributeSettable(
+            element, kAXSelectedTextAttribute as CFString, &settable
+        ) == .success, settable.boolValue,
             AXUIElementSetAttributeValue(
                 element, kAXSelectedTextAttribute as CFString, text as CFString
             ) == .success
-        else { return false }
+        {
+            return true
+        }
+        // 终端、Electron 等不开放 AX 选区写入:像输入法一样把文字当键盘事件打给当前焦点。
+        return Self.type(text)
+    }
+
+    private static func type(_ text: String) -> Bool {
+        let units = Array(text.utf16)
+        guard !units.isEmpty else { return false }
+        // 单个事件的 Unicode 串系统只收约 20 个 UTF-16 单元,按 16 切,不切开代理对。
+        var start = 0
+        while start < units.count {
+            var end = min(start + 16, units.count)
+            if end < units.count, UTF16.isTrailSurrogate(units[end]) { end -= 1 }
+            let chunk = Array(units[start..<end])
+            for down in [true, false] {
+                guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down) else { return false }
+                event.flags = []  // 讲话键是修饰键时别把它带进去变成快捷键
+                event.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
+                event.post(tap: .cghidEventTap)
+            }
+            start = end
+        }
         return true
     }
 }
@@ -103,11 +123,16 @@ struct LocalDictationCapture {
 
     private var active: (buffer: PCMBuffer, target: any DictationTextTarget)?
     private var stopRequested = false
+    private var startedAt = Date()
+
+    /// 本次按住了多久;没有进行中的采集时为无穷大。
+    var held: TimeInterval { active == nil ? .infinity : Date().timeIntervalSince(startedAt) }
 
     mutating func begin(target: any DictationTextTarget) -> PCMBuffer? {
         guard active == nil else { return nil }
         let buffer = PCMBuffer()
         active = (buffer, target)
+        startedAt = Date()
         stopRequested = false
         return buffer
     }
