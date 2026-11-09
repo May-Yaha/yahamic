@@ -287,7 +287,7 @@ final class CloudSync: ObservableObject {
             guard savePanToken(token) else { throw DeskProtocolError("钥匙串保存失败，请重新登录网盘") }
             panLoggedIn = true; panMessage = "已登录百度网盘"
         } catch is CancellationError { panMessage = "网盘登录已取消" }
-        catch { panMessage = error.localizedDescription }
+        catch { panMessage = error.localizedDescription; log("⚠️ 网盘登录失败：\(error.localizedDescription)") }
     }
 
     /// Renews the Pan token pair before it expires; the login state follows the Keychain afterwards.
