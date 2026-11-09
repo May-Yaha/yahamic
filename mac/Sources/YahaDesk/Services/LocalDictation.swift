@@ -49,13 +49,23 @@ final class FocusedTextTarget: DictationTextTarget {
         guard let front = NSWorkspace.shared.frontmostApplication,
               front.processIdentifier != ProcessInfo.processInfo.processIdentifier
         else { return nil }
+        // 如流(Flutter)系统级查询报 -25204,按 App 查才拿得到焦点输入框。
+        let element = focused(in: AXUIElementCreateSystemWide())
+            ?? focused(in: AXUIElementCreateApplication(front.processIdentifier))
+        return FocusedTextTarget(element: element, app: front.processIdentifier)
+    }
+
+    private static func focused(in root: AXUIElement) -> AXUIElement? {
         var value: CFTypeRef?
-        guard
-            AXUIElementCopyAttributeValue(
-                AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute as CFString, &value
-            ) == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID()
-        else { return FocusedTextTarget(element: nil, app: front.processIdentifier) }
-        return FocusedTextTarget(element: unsafeBitCast(value, to: AXUIElement.self), app: front.processIdentifier)
+        guard AXUIElementCopyAttributeValue(root, kAXFocusedUIElementAttribute as CFString, &value) == .success,
+              let value, CFGetTypeID(value) == AXUIElementGetTypeID()
+        else { return nil }
+        return unsafeBitCast(value, to: AXUIElement.self)
+    }
+
+    /// Flutter 只认带 HID 事件源的键盘事件,source 为 nil 的合成事件会被静默丢掉。
+    private static func key(_ code: CGKeyCode, down: Bool) -> CGEvent? {
+        CGEvent(keyboardEventSource: CGEventSource(stateID: .hidSystemState), virtualKey: code, keyDown: down)
     }
 
     func insert(_ text: String) -> Bool {
@@ -93,7 +103,7 @@ final class FocusedTextTarget: DictationTextTarget {
         board.writeObjects([item])
         let mine = board.changeCount
         for down in [true, false] {
-            guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: down) else { return false }  // V
+            guard let event = key(9, down: down) else { return false }  // V
             event.flags = .maskCommand
             event.post(tap: .cghidEventTap)
         }
@@ -115,7 +125,7 @@ final class FocusedTextTarget: DictationTextTarget {
             if end < units.count, UTF16.isTrailSurrogate(units[end]) { end -= 1 }
             let chunk = Array(units[start..<end])
             for down in [true, false] {
-                guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down) else { return false }
+                guard let event = key(0, down: down) else { return false }
                 event.flags = []  // 讲话键是修饰键时别把它带进去变成快捷键
                 event.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
                 event.post(tap: .cghidEventTap)

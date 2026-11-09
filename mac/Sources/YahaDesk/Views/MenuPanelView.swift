@@ -137,7 +137,10 @@ struct MenuPanelView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(height: 120)
-                Button("打开完整日志") { model.openLog() }.controlSize(.small)
+                HStack {
+                    Button("打开完整日志") { model.openLog() }.controlSize(.small)
+                    Button("清理日志") { model.clearLog() }.controlSize(.small)
+                }
             } label: {
                 Text("日志").font(.caption).foregroundStyle(.secondary)
             }

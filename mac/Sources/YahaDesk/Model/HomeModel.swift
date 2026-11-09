@@ -522,6 +522,13 @@ final class HomeModel: ObservableObject {
         NSWorkspace.shared.open(logURL)
     }
 
+    /// 清空日志文件和面板里的最近日志;录音与转写存档不受影响。
+    func clearLog() {
+        try? logHandle?.truncate(atOffset: 0)
+        logs.removeAll()
+        log("日志已清理")
+    }
+
     func quit() {
         NSApp.terminate(nil)
     }
