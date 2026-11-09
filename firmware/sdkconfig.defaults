@@ -72,6 +72,9 @@ CONFIG_LV_DRAW_BUF_ALIGN=64
 # tools/make_fonts.sh 生成的字体是压缩格式(bitmap_format=1,省 flash),不开此项
 # 字形会渲染成碎线段(真机实测)。
 CONFIG_LV_USE_FONT_COMPRESSED=y
+# LVGL 对象与字形缓冲走系统 malloc(>1 KB 落 PSRAM),不用 64 KB 内置池:池满时
+# LV_ASSERT_MALLOC 死循环,画屏任务卡在半帧,屏幕一半黑一半白(0.4.3 加电池图标后实测)。
+CONFIG_LV_USE_CLIB_MALLOC=y
 
 # Low-rate cloud HTTPS shares the radio with BLE audio.
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
