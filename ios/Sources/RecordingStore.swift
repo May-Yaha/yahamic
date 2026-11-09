@@ -48,7 +48,14 @@ final class RecordingStore: ObservableObject {
         message = "已退出网盘"
     }
 
+    /// Renews the 30-day token through the hub when 7 days or less remain; called before every list refresh.
+    func renew() async {
+        await PanKeychain.renewIfDue()
+        loggedIn = PanKeychain.load() != nil
+    }
+
     func refresh() async {
+        await renew()
         guard let token else {
             if loggedIn { message = "网盘登录已过期，请重新登录" }
             loggedIn = false

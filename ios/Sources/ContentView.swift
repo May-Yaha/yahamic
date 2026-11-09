@@ -52,7 +52,7 @@ struct HomeView: View {
         }
         .navigationTitle("Yaha Desk")
         .refreshable { await cloud.refresh() }
-        .task { await cloud.refresh() }
+        .task { await recordings.renew(); await cloud.refresh() }
         .sheet(isPresented: $composing) { CardSheet() }
         .safeAreaInset(edge: .bottom) { Banner(text: cloud.message.isEmpty ? recordings.message : cloud.message) }
     }

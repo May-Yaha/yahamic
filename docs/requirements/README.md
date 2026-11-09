@@ -6,6 +6,10 @@
 联合验收事实，不是当前目录或依赖要求；现行客户端契约见[领域词汇](../domain-glossary.md)与
 [云端契约](../cloud-contract.md)。个人绝对路径在公开迁移时已替换为占位符。
 
+## 2026-11-09
+
+- [百度网盘快速授权](desk-pan-quick-oauth-2026-11-09/README.md)
+
 ## 2026-11-08
 
 - [一体化本地语音输入](desk-unified-dictation-2026-11-08/README.md)

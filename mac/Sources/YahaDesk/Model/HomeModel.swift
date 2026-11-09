@@ -103,6 +103,7 @@ final class HomeModel: ObservableObject {
     let recordings = RecordingBackup()
     let voiceProfile = VoiceProfile()
     let firmware = FirmwareInstaller()
+    private var panRenewal: Task<Void, Never>?
 
     private init() {
         let storedPTT = defaults.object(forKey: "ptt") as? Bool ?? true
@@ -154,7 +155,15 @@ final class HomeModel: ObservableObject {
             guard let self else { throw VoiceProfileError("Yaha Desk 已退出") }
             return try await self.captureVoicePCM(seconds: seconds)
         }
-        Task { await recordings.upload() }  // 上次没传完的录音
+        cloud.renewPanToken = { [unowned self] in await PanKeychain.renewIfDue(log: { self.log($0) }) }
+        // 网盘令牌 30 天有效:启动时和每 6 小时检查一次,剩 7 天内经 hub 续期,再补传上次没传完的录音。
+        panRenewal = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.cloud.renewPan()
+                await self?.recordings.upload()
+                try? await Task.sleep(for: .seconds(6 * 3600))
+            }
+        }
         // 授权后无需重启即可恢复:回到前台、或系统权限变更广播
         // (com.apple.accessibility.api)时立即重查,状态转为已授权就重建 tap;
         // ensureFnListener 里的 2 秒轮询是兜底。
@@ -200,6 +209,7 @@ final class HomeModel: ObservableObject {
     }
 
     func shutdown() {
+        panRenewal?.cancel()
         cloud.stop()
         control?.stop()
         control = nil

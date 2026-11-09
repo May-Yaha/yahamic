@@ -1,75 +1,63 @@
 import Foundation
 import Testing
+import DeskProtocol
 @testable import YahaDesk
 
-@Test func panLoginParsesOnlyMatchingCallback() throws {
-    let now = Date(timeIntervalSince1970: 1_000_000)
+@Test func panLoginAcceptsOnlyTheMatchingCodeCallback() throws {
     func url(_ s: String) -> URL { URL(string: s)! }
-    let ok = PanLogin.parse(url("https://pan.baidu.com/union/oauth/authorize#expires_in=3600&access_token=a%2Bb&state=st"),
-                            state: "st", now: now)
-    #expect(ok == PanToken(token: "a+b", expires: 1_003_600))
-    let defaulted = PanLogin.parse(url("https://pan.baidu.com/union/oauth/authorize#access_token=t&state=st"),
-                                   state: "st", now: now)
-    #expect(defaulted == PanToken(token: "t", expires: 3_592_000))
-    let macState = PanLogin.macStatePrefix + "random"
-    let bridged = PanLogin.parse(url("com.yaha.desk:/baidu-pan/oauth#expires_in=3600&access_token=mac%2Btoken&state=\(macState)"),
-                                 state: macState, now: now)
-    #expect(bridged == PanToken(token: "mac+token", expires: 1_003_600))
-    #expect(PanLogin.parse(url("com.yaha.desk:/baidu-pan/oauth#access_token=t&state=ios"),
-                           state: "ios", now: now) == nil)
-    for raw in ["http://pan.baidu.com/union/oauth/authorize#access_token=t&state=st",
-                "https://pan.baidu.com/union/oauth/other#access_token=t&state=st",
-                "https://pan.baidu.com/union/oauth/authorize#error=access_denied&state=st",
-                "https://pan.baidu.com/union/oauth/authorize#access_token=t&state=st&access_token=evil",
-                "https://openapi.baidu.com/oauth/2.0/login_success#access_token=t&state=st",
-                "https://evil.example/union/oauth/authorize#access_token=t&state=st"] {
-        #expect(PanLogin.parse(url(raw), state: "st", now: now) == nil)
+    let state = PanLogin.macStatePrefix + "random"
+    #expect(PanLogin.macCode(url("com.yaha.desk:/baidu-pan/oauth#state=\(state)&code=a%2Bb"), state: state) == "a+b")
+    for raw in ["com.yaha.desk:/baidu-pan/oauth#state=\(state)",
+                "com.yaha.desk:/baidu-pan/oauth#state=other&code=c",
+                "com.yaha.desk:/baidu-pan/oauth#state=\(state)&code=c&code=d",
+                "com.yaha.desk:/baidu-pan/oauth#state=\(state)&error=access_denied",
+                "com.yaha.desk:/baidu-pan/oauth#state=\(state)&code=c&errno=10200",
+                "com.yaha.desk:/baidu-pan/oauth?code=q#state=\(state)&code=c",
+                "com.yaha.desk://evil/baidu-pan/oauth#state=\(state)&code=c",
+                "com.yaha.desk:/other#state=\(state)&code=c",
+                "com.evil.desk:/baidu-pan/oauth#state=\(state)&code=c"] {
+        #expect(PanLogin.macCode(url(raw), state: state) == nil, "\(raw)")
     }
-    for raw in ["com.yaha.desk://evil/baidu-pan/oauth#access_token=t&state=\(macState)",
-                "com.yaha.desk:/other#access_token=t&state=\(macState)",
-                "com.evil.desk:/baidu-pan/oauth#access_token=t&state=\(macState)",
-                "com.yaha.desk:/baidu-pan/oauth?access_token=query#access_token=t&state=\(macState)"] {
-        #expect(PanLogin.parse(url(raw), state: macState, now: now) == nil)
+    #expect(PanLogin.macCode(url("com.yaha.desk:/baidu-pan/oauth#state=ios&code=c"), state: "ios") == nil)
+
+    let callback = PanLogin.redirectURI.absoluteString
+    #expect(PanLogin.navigation(url(callback + "?code=c1&state=ok"), state: "ok") == .code("c1"))
+    for raw in [callback + "?code=c1&state=bad", callback + "?error=access_denied&state=ok", callback + "#code=c&state=ok"] {
+        #expect(PanLogin.navigation(url(raw), state: "ok") == .reject, "\(raw)")
     }
-    let authorization = URLComponents(url: PanLogin.authorizeURL(state: "st"), resolvingAgainstBaseURL: false)!
-    #expect(authorization.host == "pan.baidu.com")
-    #expect(authorization.path == "/union/oauth/authorize")
-    let items = authorization.queryItems!
-    let query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
-    #expect(query == ["response_type": "token", "client_id": PanLogin.appKey,
-                      "redirect_uri": "", "state": "st"])
-    let macAuthorization = URLComponents(
-        url: PanLogin.authorizeURL(state: macState, redirectURI: PanLogin.macRedirectURI),
-        resolvingAgainstBaseURL: false
-    )!
-    let macQuery = Dictionary(uniqueKeysWithValues: macAuthorization.queryItems!.map { ($0.name, $0.value ?? "") })
-    #expect(macQuery["redirect_uri"] == PanLogin.macRedirectURI.absoluteString)
-    #expect(macQuery["state"] == macState)
-    #expect(PanToken(token: "t", expires: 1_000_061).valid(at: now))
-    #expect(!PanToken(token: "t", expires: 1_000_060).valid(at: now))
+    #expect(PanLogin.navigation(url("https://pan.baidu.com/union/oauth/authorize?client_id=x"), state: "ok") == .allow)
+
+    let authorization = URLComponents(url: PanLogin.authorizeURL(state: state), resolvingAgainstBaseURL: false)!
+    #expect(authorization.host == "pan.baidu.com" && authorization.path == "/union/oauth/authorize")
+    let query = Dictionary(uniqueKeysWithValues: authorization.queryItems!.map { ($0.name, $0.value ?? "") })
+    #expect(query == ["client_id": PanLogin.appKey, "redirect_uri": callback, "scope": "nd_open_read,nd_open_write",
+                      "show_dir": "1", "state": state])
 }
 
-@Test func panLoginCancelsSensitiveFragmentsOutsideTheTrustedCallback() throws {
-    func url(_ value: String) -> URL { URL(string: value)! }
-    switch PanLogin.navigation(url("https://pan.baidu.com/union/oauth/authorize#access_token=t&state=ok"),
-                               state: "ok", now: Date(timeIntervalSince1970: 0)) {
-    case let .token(token): #expect(token.token == "t")
-    default: Issue.record("trusted direct-token callback should finish login")
+@Test func panTokenReplyRequiresAPairAndTheRecordingDirectory() throws {
+    let now = Date(timeIntervalSince1970: 1_000_000)
+    func reply(_ paths: String, code: Int = 0) -> Data {
+        Data(#"{"code":\#(code),"message":"m","data":{"access_token":"a","refresh_token":"r","expires_in":2592000,"scope":"basic","authorized_paths":\#(paths)}}"#.utf8)
     }
-    for raw in ["http://pan.baidu.com/union/oauth/authorize#access_token=t&state=ok",
-                "https://evil.example/union/oauth/authorize#access_token=t&state=ok",
-                "https://evil.example/callback?access_token=t&state=ok",
-                "https://pan.baidu.com/union/oauth/authorize?access_token=query#access_token=fragment&state=ok",
-                "https://pan.baidu.com/union/oauth/authorize#access_token=a&%61ccess_token=b&state=ok",
-                "https://openapi.baidu.com/oauth/2.0/login_success#access_token=t&state=ok",
-                "https://pan.baidu.com/union/oauth/other#error=access_denied&state=ok"] {
-        if case .reject = PanLogin.navigation(url(raw), state: "ok") {} else {
-            Issue.record("sensitive untrusted callback was not rejected: \(raw)")
-        }
+    let token = try PanLogin.parseToken(reply(#"["/apps/拾见"]"#), now: now)
+    #expect(token == PanToken(token: "a", expires: 3_592_000, refresh: "r", paths: ["/apps/拾见"]))
+    #expect(try PanLogin.parseToken(reply(#"["/apps/拾见/录音"]"#), now: now).refresh == "r")
+    #expect(try PanLogin.parseToken(reply("[]"), now: now).paths == [])
+    for paths in [#"["/apps/拾见/图片"]"#, #"["/apps/拾见/录音备份"]"#] {
+        #expect(throws: DeskProtocolError.self) { try PanLogin.parseToken(reply(paths), now: now) }
     }
-    if case .allow = PanLogin.navigation(url("https://pan.baidu.com/union/oauth/authorize?client_id=x"), state: "ok") {} else {
-        Issue.record("ordinary authorization navigation should continue")
+    #expect(throws: PanLogin.Rejected.self) { try PanLogin.parseToken(reply("[]", code: 10403), now: now) }
+    #expect(throws: DeskProtocolError.self) {
+        try PanLogin.parseToken(Data(#"{"code":0,"data":{"access_token":"a","refresh_token":"","expires_in":1}}"#.utf8), now: now)
     }
+
+    #expect(PanToken(token: "t", expires: 1_000_061).valid(at: now))
+    #expect(!PanToken(token: "t", expires: 1_000_060).valid(at: now))
+    #expect(PanToken(token: "t", expires: 1_000_000 + 6 * 86_400, refresh: "r").renewalDue(at: now))
+    #expect(!PanToken(token: "t", expires: 1_000_000 + 8 * 86_400, refresh: "r").renewalDue(at: now))
+    #expect(!PanToken(token: "t", expires: 1_000_000).renewalDue(at: now))  // old implicit token: log in again
+    let legacy = try JSONDecoder().decode(PanToken.self, from: Data(#"{"token":"t","expires":5}"#.utf8))
+    #expect(legacy == PanToken(token: "t", expires: 5))
 }
 
 @Test func panDownloadOnlyTrustsBaiduFileHostsAndExactMetadata() {

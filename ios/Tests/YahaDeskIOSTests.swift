@@ -10,23 +10,14 @@ final class YahaDeskIOSTests: XCTestCase {
         }
     }
 
-    func testPanLoginRequiresMatchingState() {
-        let now = Date(timeIntervalSince1970: 100)
-        let url = URL(string: "https://pan.baidu.com/union/oauth/authorize#access_token=token&expires_in=60&state=ok")!
-        XCTAssertEqual(PanLogin.parse(url, state: "ok", now: now), PanToken(token: "token", expires: 160))
-        XCTAssertNil(PanLogin.parse(url, state: "wrong", now: now))
-        XCTAssertNil(PanLogin.parse(
-            URL(string: "https://openapi.baidu.com/oauth/2.0/login_success#access_token=token&state=ok")!,
-            state: "ok", now: now
-        ))
-
+    func testPanLoginStopsAtTheCallbackWithMatchingState() {
+        let callback = PanLogin.redirectURI.absoluteString
+        XCTAssertEqual(PanLogin.navigation(URL(string: callback + "?code=c&state=ok")!, state: "ok"), .code("c"))
+        XCTAssertEqual(PanLogin.navigation(URL(string: callback + "?code=c&state=wrong")!, state: "ok"), .reject)
+        XCTAssertEqual(PanLogin.navigation(URL(string: "https://pan.baidu.com/union/oauth/authorize?x=1")!, state: "ok"), .allow)
         let authorization = URLComponents(url: PanLogin.authorizeURL(state: "ok"), resolvingAgainstBaseURL: false)!
-        XCTAssertEqual(authorization.host, "pan.baidu.com")
-        XCTAssertEqual(authorization.path, "/union/oauth/authorize")
-        XCTAssertEqual(
-            Dictionary(uniqueKeysWithValues: authorization.queryItems!.map { ($0.name, $0.value ?? "") }),
-            ["response_type": "token", "client_id": PanLogin.appKey, "redirect_uri": "", "state": "ok"]
-        )
+        XCTAssertEqual(authorization.queryItems?.first { $0.name == "redirect_uri" }?.value, callback)
+        XCTAssertEqual(authorization.queryItems?.first { $0.name == "show_dir" }?.value, "1")
     }
 
     func testWiFiCommandUsesExistingFirmwarePayload() throws {

@@ -42,6 +42,7 @@ final class CloudSync: ObservableObject {
     var loadPanToken: () -> PanToken? = PanKeychain.load
     var savePanToken: (PanToken) -> Bool = PanKeychain.save
     var deletePanToken: () -> Bool = PanKeychain.delete
+    var renewPanToken: @MainActor () async -> Void = { await PanKeychain.renewIfDue() }
     var dmsSession = URLSession(configuration: .ephemeral)
     var panPollInterval: Duration = .milliseconds(200)
     var proofTimeout: Duration = .seconds(40)  // 签名在云端任务下一轮做,前面可能压着 8 秒的拉取与 TLS 连接
@@ -287,6 +288,12 @@ final class CloudSync: ObservableObject {
             panLoggedIn = true; panMessage = "已登录百度网盘"
         } catch is CancellationError { panMessage = "网盘登录已取消" }
         catch { panMessage = error.localizedDescription }
+    }
+
+    /// Renews the Pan token pair before it expires; the login state follows the Keychain afterwards.
+    func renewPan() async {
+        await renewPanToken()
+        panLoggedIn = loadPanToken()?.valid() ?? false
     }
 
     func logoutPan() {

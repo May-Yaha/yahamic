@@ -1,0 +1,37 @@
+# Yaha Desk 百度网盘快速授权（2026-11-09）
+
+## 目标与决策
+
+用户要求把 Mac/iOS 的百度网盘登录从简化授权（`response_type=token`，30 天到期后须重新登录）改为
+[快速授权](https://pan.baidu.com/union/doc/使用入门/接入授权/快速授权/)，并选择：
+
+- 完整快速授权：App 只拿一次性 code，`hub.flyaha.top` 用服务端 SecretKey 换取 access/refresh token，
+  令牌对只存本机钥匙串；剩 7 天内经 hub 续期。SecretKey 不进 App、Git、日志与分发资源。
+- 授权目录：`/apps/拾见/录音`（选上级 `/apps/拾见` 也可）。
+
+## 链路
+
+1. 授权页：`/union/oauth/authorize?client_id&redirect_uri=https://hub.flyaha.top/api/v1/baidu-pan/callback&scope=nd_open_read,nd_open_write&show_dir=1&state`。
+   `show_dir=1` 来自百度授权页脚本，官方文档只写“目录级授权必须传递目录级授权标识”。
+2. 回调：
+   - Mac：`ASWebAuthenticationSession` → hub 桥接页把 `?code&state` 转成 `com.yaha.desk:/baidu-pan/oauth#state&code`。
+   - iOS：WKWebView 在跳往回调地址前取消导航，code 不离开手机。
+3. 换取/续期：`POST /api/v1/baidu-pan/desk/token`，body 为 `{"code"}` 或 `{"refresh_token"}`；
+   返回百度 `data` 原样字段。10403 表示 code/refresh_token 已失效，只能重新登录。
+4. App 校验 `authorized_paths` 覆盖 `/apps/拾见/录音`；不覆盖即报错，不保存。
+5. 续期：Mac 启动后每 6 小时、iOS 启动/回前台/刷新列表时检查；单飞执行，成功后立即覆盖钥匙串。
+   旧简化授权令牌照常可用到期，之后提示重新登录。
+
+## 已知风险
+
+- Mac 的 code 会出现在 hub 回调 GET 的 URL 里（nginx 访问日志可能记录）。code 10 分钟内一次性有效，
+  且没有 SecretKey 无法换取。
+- DMS（`xpan/device`）是否接受目录级令牌未经实测；真机登录后绑定/静音须验收。
+- 新账号若还没有 `/apps/拾见/录音`，授权页可能无法选到；此时选 `/apps/拾见`。
+
+## 验证
+
+- hub 服务端（闭源）：换取/续期接口与桥接页单测通过。
+- Mac：`swift test` 88 项通过。iOS：Release 真机构建与 `build-for-testing` 通过。
+- 版本随本需求升至 `0.4.1`（Mac/iOS/固件同版）。
+- 真实登录、续期与 DMS 验收待服务端发布后执行。
