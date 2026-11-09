@@ -38,6 +38,8 @@
 ## 已知风险
 
 - 换取 code 仍需服务端 SecretKey；hub 的 AppKey/SecretKey 必须与 App 的 AppKey 属同一百度应用，否则百度返回 20038。
+  2026-11-09 实测：App 原用旧应用 AppKey `yausCBE5…`，hub 用 AppID 124461637（AppKey `FQQEf…`），换取报 20038；
+  按用户要求 App 改用 124461637 的 AppKey，与 hub 同一应用，回调地址登记在该应用下。旧应用令牌到期后需重新登录。
 - DMS（`xpan/device`）是否接受目录级令牌未经实测；真机登录后绑定/静音须验收。
 - 百度授权页没有指定目录的参数：不传 `show_dir` 时提交的 `paths` 为空，授权范围由百度控制台的应用配置决定。
   若百度返回的 `authorized_paths` 不含 `/apps/拾见/录音`，App 拒绝保存并提示检查控制台。

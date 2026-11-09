@@ -14,7 +14,8 @@ import WebKit
 /// never appear in this app, and tokens are never logged.
 /// Source: https://pan.baidu.com/union/doc/使用入门/接入授权/快速授权/
 enum PanLogin {
-    static let appKey = "yausCBE5H5qb1qTFe40KpkP1x6zxXBrd"
+    /// Same Baidu app as hub (AppID 124461637); hub exchanges the code with this app's secret, so they must match.
+    static let appKey = "FQQEfWqv6Eh6cPRMmdTpJaCw070CLDgH"
     /// Registered in the Baidu console (com.yaha.desk:/… is rejected with errno 20030); Baidu redirects here directly.
     static let redirectURI = URL(string: "yahadesk://oauth")!
     static let tokenURL = URL(string: "https://hub.flyaha.top/api/v1/baidu-pan/desk/token")!
