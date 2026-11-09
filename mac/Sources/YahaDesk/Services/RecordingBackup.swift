@@ -8,7 +8,7 @@ import DeskProtocol
 @MainActor
 final class RecordingBackup: ObservableObject {
     static let minimumSamples48k = 48_000  // under 1 s is a mis-press, not worth a file
-    @Published private(set) var items: [PanFiles.Item] = []
+    @Published private(set) var items: [PanFiles.Take] = []
     @Published private(set) var pending = 0
     @Published private(set) var message: String?
     @Published private(set) var busy = false
@@ -20,6 +20,7 @@ final class RecordingBackup: ObservableObject {
     var now: () -> Date = Date.init
     var loginExpired: () -> Void = {}
     let folder: URL
+    lazy var player = TakePlayer { [weak self] in self?.token().flatMap { $0.valid() ? $0.token : nil } }
 
     private var writer: OggOpusWriter?
     private var started = Date()
@@ -153,7 +154,7 @@ final class RecordingBackup: ObservableObject {
         guard let token = token(), token.valid() else { message = "登录网盘后可查看已备份的录音"; return }
         busy = true
         defer { busy = false }
-        do { items = try await client(token).recent().filter { $0.path.hasSuffix(".opus") } } catch { message = error.localizedDescription }
+        do { items = PanFiles.takes(try await client(token).recent()) } catch { message = error.localizedDescription }
     }
 
     private func client(_ token: PanToken) -> PanFiles {

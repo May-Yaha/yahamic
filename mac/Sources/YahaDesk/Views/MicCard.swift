@@ -47,6 +47,12 @@ struct MicCard: View {
                     CircleIcon(symbol: statusIcon,
                                tint: device.isOnline ? statusTint.color : nil, size: 44)
                         .symbolEffect(.bounce, value: device.state.muted)
+                        // 对讲机式光环:外圈状态色描边,送声时随电平发光。
+                        .padding(3)
+                        .overlay(Circle().strokeBorder(statusTint.color.opacity(device.isOnline ? 0.4 : 0.15), lineWidth: 2))
+                        .shadow(color: statusTint == .live ? statusTint.color.opacity(0.25 + 0.5 * device.levelFraction) : .clear,
+                                radius: 3 + 8 * device.levelFraction)
+                        .animation(.easeOut(duration: 0.15), value: device.levelFraction)
                 }
                 .buttonStyle(.plain)
                 .disabled(!device.isOnline)
@@ -54,11 +60,15 @@ struct MicCard: View {
                 .accessibilityLabel(device.state.muted ? "开麦" : "静音")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(device.title).font(.headline)
-                    Text(statusWord).font(.subheadline).foregroundStyle(statusTint.color)
+                    Text(statusWord).font(.subheadline.weight(.semibold)).foregroundStyle(statusTint.color)
                 }
                 Spacer()
                 if device.isOnline {
                     VStack(alignment: .trailing, spacing: 2) {
+                        if let battery = device.battery {
+                            Label(battery.text, systemImage: battery.symbol)
+                                .font(.caption2).foregroundStyle(battery.low ? MenuStatusTint.warning.color : .secondary)
+                        }
                         Label("\(device.state.rssi) dBm", systemImage: "antenna.radiowaves.left.and.right")
                             .font(.caption2).foregroundStyle(.secondary)
                         Text(device.kind).font(.caption2).foregroundStyle(.tertiary)

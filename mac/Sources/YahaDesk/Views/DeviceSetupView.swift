@@ -28,6 +28,8 @@ struct DeviceSetupView: View {
         }
         .formStyle(.grouped)
         .frame(minWidth: 560, minHeight: 480)
+        .safeAreaInset(edge: .bottom) { MiniPlayerBar(player: recordings.player).frame(maxWidth: 520) }
+        .onDisappear { recordings.player.stop() }  // 关窗即停,不在后台偷偷放
         .task(id: cloud.panLoggedIn) { if cloud.panLoggedIn { await recordings.upload(); await recordings.refresh() } }
         .confirmationDialog("删除本人声纹档案？", isPresented: $confirmingVoiceDelete, titleVisibility: .visible) {
             Button("只删除本机档案", role: .destructive) {
@@ -223,14 +225,8 @@ struct DeviceSetupView: View {
                     Text(cloud.panLoggedIn ? "开麦讲话后静音，录音会自动上传" : "登录网盘后显示已备份的录音")
                 }
             }
-            ForEach(showAllRecordings ? recordings.items : Array(recordings.items.prefix(5))) { item in
-                LabeledContent {
-                    Text(ByteCountFormatter.string(fromByteCount: Int64(item.size), countStyle: .file))
-                        .monospacedDigit()
-                } label: {
-                    Text((item.path as NSString).lastPathComponent).monospacedDigit()
-                    Text(item.mtime.formatted(date: .abbreviated, time: .shortened))
-                }
+            ForEach(showAllRecordings ? recordings.items : Array(recordings.items.prefix(5))) { take in
+                TakeRow(take: take, player: recordings.player, showsDate: true)
             }
             if recordings.items.count > 5 {
                 Button(showAllRecordings ? "收起" : "显示全部 \(recordings.items.count) 条") { showAllRecordings.toggle() }
@@ -256,7 +252,7 @@ struct DeviceSetupView: View {
                 .disabled(recordings.busy || !cloud.panLoggedIn)
             }
         } footer: {
-            Text("每次讲话的录音存到网盘兼容目录 /apps/拾见/录音，本地转文字写入的文本以同名 .txt 一起保存；最多显示最近 100 条。")
+            Text("每次讲话的录音存到网盘兼容目录 /apps/拾见/录音，本地转文字写入的文本以同名 .txt 一起保存并显示在录音下面；点录音播放，最多显示最近 100 条。")
         }
     }
 
@@ -313,7 +309,7 @@ struct DeviceSetupView: View {
         } header: {
             Text("本人声纹")
         } footer: {
-            Text("五段原始语音和声纹默认只保存在本机；只有点“备份到网盘”才会上传。本批用于建立识别基线，尚未默认过滤其他人的声音。")
+            Text("五段原始语音和声纹默认只保存在本机；只有点“备份到网盘”才会上传。打开菜单栏“只留本人声音”后，本地转文字和 BlackHole 会去掉不像本人的语段；你和别人同时说话时分不开。")
         }
     }
 

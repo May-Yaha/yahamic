@@ -96,20 +96,26 @@ enum PCM16Wave {
     }
 }
 
-private actor VoiceEmbeddingModel {
+actor VoiceEmbeddingModel {
+    static let shared = VoiceEmbeddingModel()
     private var manager: DiarizerManager?
 
+    private func diarizer() async throws -> DiarizerManager {
+        if let manager { return manager }
+        let models = try await DiarizerModels.downloadIfNeeded()
+        let loaded = DiarizerManager()
+        loaded.initialize(models: models)
+        manager = loaded
+        return loaded
+    }
+
+    /// 16 kHz 单声道一段语音的声纹(未归一化,比对前由 VoiceIdentityPolicy 归一)。
+    func embedding(of samples: [Float]) async throws -> [Float] {
+        try await diarizer().extractSpeakerEmbedding(from: samples)
+    }
+
     func embedding(for recordings: [Data]) async throws -> [Float] {
-        let diarizer: DiarizerManager
-        if let manager {
-            diarizer = manager
-        } else {
-            let models = try await DiarizerModels.downloadIfNeeded()
-            let loaded = DiarizerManager()
-            loaded.initialize(models: models)
-            manager = loaded
-            diarizer = loaded
-        }
+        let diarizer = try await diarizer()
         let embeddings = try recordings.map { pcm -> [Float] in
             let count = pcm.count / 2
             var samples = [Int16](repeating: 0, count: count)
@@ -179,8 +185,7 @@ final class VoiceProfile: ObservableObject {
         .appendingPathComponent("YahaDesk/VoiceProfile"),
          embedRecordings: (([Data]) async throws -> [Float])? = nil) {
         self.folder = folder
-        let model = VoiceEmbeddingModel()
-        self.embedRecordings = embedRecordings ?? { try await model.embedding(for: $0) }
+        self.embedRecordings = embedRecordings ?? { try await VoiceEmbeddingModel.shared.embedding(for: $0) }
         let url = folder.appendingPathComponent("profile.json")
         if let data = try? Data(contentsOf: url),
            let saved = try? JSONDecoder().decode(VoiceProfileManifest.self, from: data) {

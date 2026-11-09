@@ -1,18 +1,14 @@
-import AVFoundation
 import DeskProtocol
 import Foundation
 
 @MainActor
 final class RecordingStore: ObservableObject {
-    @Published private(set) var items: [PanFiles.Item] = []
+    @Published private(set) var items: [PanFiles.Take] = []
     @Published private(set) var loggedIn = PanKeychain.load() != nil
     @Published private(set) var busy = false
-    @Published private(set) var playingID: UInt64?
     @Published var message = ""
 
-    private var player: AVPlayer?
-    private var localFile: URL?
-    private var playbackObservers: [NSObjectProtocol] = []
+    let player = TakePlayer { PanKeychain.load().flatMap { $0.valid() ? $0.token : nil } }
     private var generation = 0
 
     var token: String? {
@@ -41,7 +37,9 @@ final class RecordingStore: ObservableObject {
     }
 
     func logout() {
-        stop()
+        generation &+= 1
+        busy = false
+        player.stop()
         guard PanKeychain.delete() else { message = "退出失败，请重试"; return }
         loggedIn = false
         items = []
@@ -68,7 +66,7 @@ final class RecordingStore: ObservableObject {
         do {
             let fresh = try await PanFiles(token: token).recent()
             guard Self.acceptsResult(request: request, current: generation, loggedIn: loggedIn) else { return }
-            items = fresh
+            items = PanFiles.takes(fresh)
             message = items.isEmpty ? "还没有录音" : ""
         } catch {
             guard request == generation else { return }
@@ -76,79 +74,7 @@ final class RecordingStore: ObservableObject {
         }
     }
 
-    func play(_ item: PanFiles.Item) async {
-        if playingID == item.id { stop(); return }
-        guard let token, !busy else { return }
-        stop()
-        let request = generation
-        busy = true
-        defer { if request == generation { busy = false } }
-        do {
-            message = "正在准备录音"
-            let url = try await PanFiles(token: token).download(item)
-            var unownedFile: URL? = url
-            defer { if let unownedFile { Self.removeDownloadedFile(unownedFile) } }
-            guard Self.acceptsResult(request: request, current: generation, loggedIn: loggedIn) else {
-                return
-            }
-            guard try await AVURLAsset(url: url).load(.isPlayable) else {
-                throw DeskProtocolError("网盘录音无法播放")
-            }
-            guard Self.acceptsResult(request: request, current: generation, loggedIn: loggedIn) else {
-                return
-            }
-            localFile = url
-            unownedFile = nil
-            let playerItem = AVPlayerItem(url: url)
-            player = AVPlayer(playerItem: playerItem)
-            observe(playerItem)
-            player?.play()
-            playingID = item.id
-            message = ""
-        } catch {
-            guard request == generation else { return }
-            message = error.localizedDescription
-        }
-    }
-
-    func stop() {
-        generation &+= 1
-        busy = false
-        resetPlayback()
-    }
-
     nonisolated static func acceptsResult(request: Int, current: Int, loggedIn: Bool) -> Bool {
         request == current && loggedIn
-    }
-
-    nonisolated static func removeDownloadedFile(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
-    private func observe(_ item: AVPlayerItem) {
-        let center = NotificationCenter.default
-        playbackObservers = [
-            center.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.stop() }
-            },
-            center.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main) { [weak self] note in
-                let failure = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error)?.localizedDescription
-                    ?? "网盘录音播放失败"
-                Task { @MainActor in
-                    self?.stop()
-                    self?.message = failure
-                }
-            },
-        ]
-    }
-
-    private func resetPlayback() {
-        player?.pause()
-        player = nil
-        playingID = nil
-        for observer in playbackObservers { NotificationCenter.default.removeObserver(observer) }
-        playbackObservers.removeAll()
-        if let localFile { Self.removeDownloadedFile(localFile) }
-        localFile = nil
     }
 }

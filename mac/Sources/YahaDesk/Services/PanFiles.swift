@@ -15,6 +15,22 @@ struct PanFiles: Sendable {
         let mtime: Date
     }
 
+    /// One recording: the `HHmmss.opus` audio and, when dictation inserted text for it, the `HHmmss.txt` beside it.
+    struct Take: Identifiable, Equatable, Sendable {
+        let audio: Item
+        var transcript: Item?
+        var id: UInt64 { audio.id }
+        var path: String { audio.path }
+        var size: Int { audio.size }
+        var mtime: Date { audio.mtime }
+    }
+
+    /// Pairs each audio file with its same-named text, keeping the listing order.
+    static func takes(_ items: [Item]) -> [Take] {
+        let texts = Dictionary(items.filter { $0.path.hasSuffix(".txt") }.map { (String($0.path.dropLast(4)), $0) }) { a, _ in a }
+        return items.filter { $0.path.hasSuffix(".opus") }.map { Take(audio: $0, transcript: texts[String($0.path.dropLast(5))]) }
+    }
+
     let token: String
     var log: @Sendable (String) -> Void
     var session: URLSession
@@ -60,7 +76,7 @@ struct PanFiles: Sendable {
     /// time; a clock-rollback `HHmmss.n.opus` sorts just before its `HHmmss.opus`). listall answers errno 20020 (path
     /// outside the app's scope) for this app; `list`, which yahaops-api uses for the same app, works. A missing root
     /// is an empty list; a folder failing after some files were listed returns what was listed.
-    func recent(limit: Int = 100) async throws -> [Item] {
+    func recent(limit: Int = 200) async throws -> [Item] {  // audio + text: about 100 takes
         var files: [[String: Any]] = []
         let days: [[String: Any]]
         // ponytail: newest 30 day folders, one call each; page or cache if older takes must show.
@@ -103,6 +119,13 @@ struct PanFiles: Sendable {
         let target = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".opus")
         try FileManager.default.moveItem(at: temporary, to: target)
         return target
+    }
+
+    /// The dictation text of a take; same checked download as the audio, read and deleted at once.
+    func text(_ item: Item) async throws -> String {
+        let url = try await download(item)
+        defer { try? FileManager.default.removeItem(at: url) }
+        return try String(contentsOf: url, encoding: .utf8)
     }
 
     /// Moves only this app's voice-profile artifacts to Pan's recycle bin.

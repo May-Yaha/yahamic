@@ -41,6 +41,8 @@ std::atomic<bool> speaking{false}, wifi_up{false}, storage_ready{false};
 std::atomic<uint32_t> grant_epoch{0};
 std::atomic<bool> scan_wanted{false};
 std::atomic<bool> wifi_dropped{false};  // a join failed or the AP dropped us; network_cycle schedules the retry
+std::atomic<int> battery_percent{-1};
+std::atomic<bool> battery_charging{false}, battery_usb{false};
 std::atomic<uint16_t> wifi_reason{0};  // last failed join's wifi_err_reason_t; 0 once joined or given new credentials
 uint32_t next_connect = 0, backoff = 2000;  // worker task only; network_cycle is the single esp_wifi_connect caller
 uint32_t scan_count = 0;  // guarded by lock, with networks
@@ -459,6 +461,9 @@ bool provision(const char* bytes, size_t size) {
   view.error = "";
   return true;
 }
+void set_battery(int percent, bool charging, bool usb) {
+  battery_percent.store(percent), battery_charging.store(charging), battery_usb.store(usb);
+}
 std::string status() {
   auto j = object();
   std::lock_guard<std::mutex> g(lock);
@@ -467,6 +472,9 @@ std::string status() {
   cJSON_AddNumberToObject(j.get(), "wifi_scan", scan_count);
   cJSON_AddNumberToObject(j.get(), "wifi_reason", wifi_reason.load());
   cJSON_AddStringToObject(j.get(), "error", view.error.c_str());
+  cJSON_AddNumberToObject(j.get(), "battery", battery_percent.load());
+  cJSON_AddBoolToObject(j.get(), "charging", battery_charging.load());
+  cJSON_AddBoolToObject(j.get(), "usb_power", battery_usb.load());
   cJSON_AddNumberToObject(j.get(), "display_revision", 0);  // 0.2.0 Mac apps require it to accept cloud state
   dms::add_status(j.get());
   return encode(j.get());

@@ -19,6 +19,16 @@ struct MicDevice {
         return String(format: "送声中 · %.0f dB · %d 帧/s", state.levelDb, state.framesPerSecond)
     }
 
+    /// 设备电池:在线且报了电量或外接电源才有(0.4.3 前的固件不报)。图标按 25% 一档;没在充电且 ≤20% 为 low。
+    var battery: (text: String, symbol: String, low: Bool)? {
+        guard state.connected else { return nil }
+        let cloud = state.cloud
+        guard cloud.battery >= 0 else { return cloud.usbPower ? ("外接电源", "powerplug", false) : nil }
+        let percent = min(cloud.battery, 100)
+        if cloud.charging { return ("充电 \(percent)%", "battery.100percent.bolt", false) }
+        return ("\(percent)%", "battery.\(min(100, (percent + 12) / 25 * 25))percent", percent <= 20)
+    }
+
     /// 电平 0..1(-60 dB..0 dB)
     var levelFraction: Double {
         guard state.connected, !state.muted else { return 0 }

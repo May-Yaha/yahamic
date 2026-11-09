@@ -30,23 +30,29 @@ struct HomeView: View {
             Section { statusCard } footer: { statusFooter }
             Section {
                 NavigationLink { WiFiView() } label: {
-                    LabeledContent { Text(cloud.status?.ssid ?? "") } label: { Label("切换 Wi-Fi", systemImage: "wifi") }
+                    LabeledContent { Text(cloud.status?.ssid ?? "") } label: {
+                        Label("切换 Wi-Fi", systemImage: "wifi").labelStyle(.badge(.blue))
+                    }
                 }
                 Group {
-                    Button { Task { await cloud.mute(panToken: recordings.token) } } label: { Label("静音", systemImage: "mic.slash") }
-                        .disabled(remoteBlocked != nil || cloud.busy || cloud.status?.muted == true)
-                    Button { composing = true } label: { Label("发送卡片", systemImage: "rectangle.on.rectangle") }
-                        .disabled(remoteBlocked != nil)
+                    Button { Task { await cloud.mute(panToken: recordings.token) } } label: {
+                        Label("静音", systemImage: "mic.slash.fill").labelStyle(.badge(.red))
+                    }
+                    .disabled(remoteBlocked != nil || cloud.busy || cloud.status?.muted == true)
+                    Button { composing = true } label: {
+                        Label("发送卡片", systemImage: "rectangle.on.rectangle").labelStyle(.badge(.orange))
+                    }
+                    .disabled(remoteBlocked != nil)
                 }
                 .foregroundStyle(remoteBlocked == nil ? Color.primary : Color.secondary)  // 列表里禁用的按钮文字不会自动变灰
             } header: { Text("常用") } footer: {
                 Text(remoteBlocked ?? "静音与卡片经网盘设备服务下发，不用靠近设备；远程只能静音，不能开麦。")
             }
             Section("设备与账号") {
-                NavigationLink { DeviceManageView() } label: { Label("设备管理", systemImage: "gearshape") }
-                account("Zhi.AI", systemImage: "person.crop.circle", loggedIn: cloud.loggedIn, busy: cloud.busy,
+                NavigationLink { DeviceManageView() } label: { Label("设备管理", systemImage: "gearshape.fill").labelStyle(.badge(.gray)) }
+                account("Zhi.AI", systemImage: "person.fill", color: .indigo, loggedIn: cloud.loggedIn, busy: cloud.busy,
                         login: { await cloud.login() }, logout: cloud.logout)
-                account("百度网盘", systemImage: "externaldrive", loggedIn: recordings.token != nil, busy: recordings.busy,
+                account("百度网盘", systemImage: "externaldrive.fill", color: .cyan, loggedIn: recordings.token != nil, busy: recordings.busy,
                         login: { await recordings.login() }, logout: recordings.logout)
             }
         }
@@ -67,19 +73,27 @@ struct HomeView: View {
             }
             .padding(.vertical, 8)
         } else if let status = cloud.status, status.reported {
-            HStack(spacing: 16) {
-                Image(systemName: status.muted ? "mic.slash.fill" : "mic.fill")
-                    .font(.title2).foregroundStyle(.white)
-                    .frame(width: 52, height: 52)
-                    .background(Circle().fill(status.online ? (status.muted ? Color.gray : Color.green) : Color.secondary.opacity(0.4)))
+            // 单一主角:大圆状态 + 状态词 + 一行说明;色与 Mac 菜单一致(开麦绿、静音红、离线灰)。
+            let tint: Color = status.online ? (status.muted ? .red : .green) : .gray
+            VStack(spacing: 12) {
+                Image(systemName: status.online ? (status.muted ? "mic.slash.fill" : "mic.fill") : "mic.slash")
+                    .font(.largeTitle.weight(.semibold)).foregroundStyle(.white)
+                    .frame(width: 104, height: 104)
+                    .background(Circle().fill(tint.gradient))
+                    .padding(8)
+                    .overlay(Circle().strokeBorder(tint.opacity(0.25), lineWidth: 6))
+                    .shadow(color: tint.opacity(status.online ? 0.35 : 0), radius: 16, y: 6)
+                    .contentTransition(.symbolEffect(.replace))
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(status.online ? (status.muted ? "在线 · 已静音" : "在线 · 麦克风使用中") : "离线").font(.headline)
-                    Text(detail(status)).font(.subheadline).foregroundStyle(.secondary)
-                }
+                Text(status.online ? (status.muted ? "在线 · 已静音" : "在线 · 麦克风使用中") : "离线")
+                    .font(.title3.bold()).foregroundStyle(tint)
+                Text(detail(status)).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
+            .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .accessibilityElement(children: .combine)
+            .listRowBackground(Color.clear)
+            .animation(.snappy, value: status)
         } else if cloud.status != nil {
             Text("设备还没有上报。先在“切换 Wi-Fi”里给设备连网。").foregroundStyle(.secondary)
         } else if cloud.busy {
@@ -113,7 +127,7 @@ struct HomeView: View {
         return nil
     }
 
-    private func account(_ title: String, systemImage: String, loggedIn: Bool, busy: Bool,
+    private func account(_ title: String, systemImage: String, color: Color, loggedIn: Bool, busy: Bool,
                          login: @escaping () async -> Void, logout: @escaping () -> Void) -> some View {
         LabeledContent {
             if loggedIn {
@@ -123,8 +137,39 @@ struct HomeView: View {
             }
         } label: {
             Label { Text(title); Text(loggedIn ? "已登录" : "未登录") } icon: { Image(systemName: systemImage) }
+                .labelStyle(.badge(color))
         }
     }
+}
+
+/// 设置式行图标：白色符号放在彩色圆角方块里（同系统设置），禁用时变灰。
+struct BadgeLabelStyle: LabelStyle {
+    let color: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        Badge(color: color, configuration: configuration)
+    }
+
+    private struct Badge: View {
+        let color: Color
+        let configuration: LabelStyleConfiguration
+        @Environment(\.isEnabled) private var enabled
+
+        var body: some View {
+            Label {
+                configuration.title
+            } icon: {
+                configuration.icon
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background((enabled ? color : .gray).gradient, in: .rect(cornerRadius: 8))
+            }
+        }
+    }
+}
+
+extension LabelStyle where Self == BadgeLabelStyle {
+    static func badge(_ color: Color) -> BadgeLabelStyle { BadgeLabelStyle(color: color) }
 }
 
 /// 底部提示条：只显示最近一条操作结果，空串不占位。

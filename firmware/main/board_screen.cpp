@@ -135,11 +135,39 @@ lv_obj_t* make_screen() {
   return scr;
 }
 
-// 全部屏的底部状态行:18px 灰字,同一位置。
+// 全部屏的底部状态行:电池图标 + 18px 灰字,同一位置、整组居中;没装电池时图标隐藏,
+// flex 跳过隐藏项,文字照旧居中。返回文字标签,图标是同一行的第 0 个子对象(set_footer 更新)。
+constexpr int kBatteryW = 30, kBatteryH = 16, kBatteryInner = kBatteryW - 8;  // 外壳 2px 描边 + 2px 内边距
 lv_obj_t* make_footer(lv_obj_t* parent) {
-  lv_obj_t* label = make_label(parent, 448, &font_zh_label, kGray);
-  lv_obj_set_width(label, 424);
-  lv_obj_set_x(label, 28);
+  lv_obj_t* row = make_box(parent);
+  lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+  lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(row, 8, 0);
+  lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 448);
+  lv_obj_t* icon = make_box(row);
+  lv_obj_set_style_bg_opa(icon, LV_OPA_TRANSP, 0);
+  lv_obj_set_size(icon, kBatteryW + 3, kBatteryH);
+  lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t* body = make_box(icon);
+  lv_obj_set_size(body, kBatteryW, kBatteryH);
+  lv_obj_set_style_radius(body, 4, 0);
+  lv_obj_set_style_bg_opa(body, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(body, 2, 0);
+  lv_obj_set_style_border_color(body, kGray, 0);
+  lv_obj_set_style_pad_all(body, 2, 0);
+  lv_obj_t* fill = make_box(body);
+  lv_obj_set_size(fill, kBatteryInner, kBatteryH - 8);
+  lv_obj_set_style_radius(fill, 1, 0);
+  lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, 0);
+  lv_obj_t* nub = make_box(icon);  // 正极帽
+  lv_obj_set_size(nub, 3, 6);
+  lv_obj_set_pos(nub, kBatteryW, (kBatteryH - 6) / 2);
+  lv_obj_set_style_bg_color(nub, kGray, 0);
+  lv_obj_set_style_bg_opa(nub, LV_OPA_COVER, 0);
+  lv_obj_t* label = make_label(row, 0, &font_zh_label, kGray);
+  lv_obj_set_width(label, LV_SIZE_CONTENT);
   return label;
 }
 
@@ -183,6 +211,18 @@ void set_bg(lv_obj_t* obj, lv_color_t c) {
 }
 void set_color(lv_obj_t* label, lv_color_t c) {
   if (!lv_color_eq(lv_obj_get_style_text_color(label, 0), c)) lv_obj_set_style_text_color(label, c, 0);
+}
+
+// 状态行文字 + 电池图标:充电绿、≤20% 红、其余浅灰;电量按内框宽度比例填充。
+void set_footer(lv_obj_t* label, const std::string& text, const Screen& s) {
+  set_text(label, text.c_str());
+  lv_obj_t* icon = lv_obj_get_child(lv_obj_get_parent(label), 0);
+  lv_obj_update_flag(icon, LV_OBJ_FLAG_HIDDEN, s.battery < 0);
+  if (s.battery < 0) return;
+  lv_obj_t* fill = lv_obj_get_child(lv_obj_get_child(icon, 0), 0);
+  const int w = LV_MAX(2, kBatteryInner * LV_MIN(s.battery, 100) / 100);
+  if (lv_obj_get_style_width(fill, 0) != w) lv_obj_set_width(fill, w);
+  set_bg(fill, s.charging ? kGreen : s.battery <= 20 ? kRed : kSoft);
 }
 
 void set_line(lv_obj_t* label, const std::string& text) {
@@ -586,7 +626,7 @@ void draw_home(const Screen& s) {
     set_bg(home_hub.box, alert_bg(s.alert.level));
     set_color(home_hub.text, value_color(s.alert.level));
   }
-  set_text(home_status, s.status.c_str());
+  set_footer(home_status, s.status, s);
   show(home_root);
 }
 
@@ -604,7 +644,7 @@ void draw_overview(const Screen& s) {
     if (row) set_color(overview_rows[i].text, value_color(row->level));
   }
   for (int i = 0; i < display::kRows - 1; ++i) lv_obj_update_flag(overview_lines[i], LV_OBJ_FLAG_HIDDEN, i + 1 >= n);
-  set_text(overview_status, s.status.c_str());
+  set_footer(overview_status, s.status, s);
   show(overview_root);
 }
 
@@ -634,7 +674,7 @@ void draw_detail(const Screen& s) {
       lv_obj_set_y(detail_bars[i], kTrendBottom - h);
     }
   }
-  set_text(detail_status, s.status.c_str());
+  set_footer(detail_status, s.status, s);
   show(detail_root);
 }
 
@@ -648,7 +688,7 @@ void draw_alerts(const Screen& s) {
     if (row) set_color(alerts_rows[i].text, row->text.rfind("长按", 0) == 0 ? kBlue : kGray);
   }
   set_line(alerts_empty, s.line2);
-  set_text(alerts_status, s.status.c_str());
+  set_footer(alerts_status, s.status, s);
   show(alerts_root);
 }
 
@@ -841,7 +881,7 @@ void draw(const Screen& s) {
           set_text(card_source, "雅哈");
           set_card_body(s.line2, s.speed, fresh, s.marquee_paused);
         }
-        set_text(card_status, s.line3.c_str());
+        set_footer(card_status, s.line3, s);
         show(card_root);
         break;
     }
@@ -854,7 +894,7 @@ void draw(const Screen& s) {
   set_text(t->title, resolve_line(s.line1).c_str());
   set_line(t->line2, resolve_line(s.line2));
   set_line(t->line3, resolve_line(s.line3));
-  set_text(t->status, s.status.c_str());
+  set_footer(t->status, s.status, s);
   show(t->root);
   lvgl_port_unlock();
 }

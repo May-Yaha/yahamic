@@ -14,9 +14,14 @@ public struct DeviceCloudState: Codable, Equatable, Sendable {
     public var proof = ""
     /// ESP-IDF `wifi_err_reason_t` of the last failed join; 0 once joined, after new credentials and on older firmware.
     public var wifiReason = 0
+    /// Device battery 0...100; -1 when no battery is fitted or on firmware before 0.4.3.
+    public var battery = -1
+    public var charging = false
+    public var usbPower = false
     public init() {}
     enum CodingKeys: String, CodingKey {
-        case authorized, error, dms, proof
+        case authorized, error, dms, proof, battery, charging
+        case usbPower = "usb_power"
         case wifiConnected = "wifi_connected", wifiScan = "wifi_scan", deviceID = "device_id", wifiReason = "wifi_reason"
     }
     public init(from decoder: Decoder) throws {
@@ -29,6 +34,9 @@ public struct DeviceCloudState: Codable, Equatable, Sendable {
         deviceID = try c.decodeIfPresent(String.self, forKey: .deviceID) ?? ""
         proof = try c.decodeIfPresent(String.self, forKey: .proof) ?? ""
         wifiReason = try c.decodeIfPresent(Int.self, forKey: .wifiReason) ?? 0
+        battery = try c.decodeIfPresent(Int.self, forKey: .battery) ?? -1
+        charging = try c.decodeIfPresent(Bool.self, forKey: .charging) ?? false
+        usbPower = try c.decodeIfPresent(Bool.self, forKey: .usbPower) ?? false
     }
 
     /// Why the last join failed, for the reasons the user can fix; nil for the rest (they read as a plain timeout).

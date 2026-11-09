@@ -69,6 +69,14 @@ import DeskCore
     #expect(Wire.identity.uppercased().hasPrefix("9052000B-"))
 }
 
+@Test func batteryFieldsDecodeAndDefaultOnOldFirmware() throws {
+    let old = try JSONDecoder().decode(DeviceCloudState.self, from: Data(#"{"wifi_connected":true,"authorized":true,"error":""}"#.utf8))
+    #expect(old.battery == -1 && !old.charging && !old.usbPower)
+    let next = try JSONDecoder().decode(DeviceCloudState.self, from: Data(
+        #"{"wifi_connected":true,"authorized":true,"error":"","battery":42,"charging":true,"usb_power":true}"#.utf8))
+    #expect(next.battery == 42 && next.charging && next.usbPower)
+}
+
 // Throwaway self-signed P-256 cert, CN yd_0123456789abcdefghijklmnop; its key was discarded.
 private let testCertificate = Data(base64Encoded: """
     MIIBhDCCASqgAwIBAgIUaUDCcksq6mH0oWum7KpnBZNLU4YwCgYIKoZIzj0EAwIwKDEmMCQGA1UEAwwdeWRfMDEyMzQ1Njc4OWFiY2RlZmdoaWprbG1ub3AwHhcNMjYxMTA1MTEwOTQzWhcNMjYxMTA2MTEwOTQzWjAoMSYwJAYDVQQDDB15ZF8wMTIzNDU2Nzg5YWJjZGVmZ2hpamtsbW5vcDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABOVhp5Kj8gKGlpZFTHhRawdqYRXjycLgtTrhre+p/VK1yNRl8A7J9AINpW8l+kJlT2nruCFLx52qd1jdaGGFbJKjMjAwMB0GA1UdDgQWBBQAgJiJriWG19OtFC96E0sE6tr8pzAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0gAMEUCIA2jwAjaOIAUeNYBM7+EIBDf3eHFBPGD0eNyldOOr7PZAiEArosN8mJjTHM3Swh4Vv0LoDQYyBVtVefl45+IwujI7dY=

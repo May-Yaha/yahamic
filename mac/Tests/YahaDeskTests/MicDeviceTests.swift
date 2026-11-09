@@ -17,3 +17,19 @@ import Testing
     mic.paused = true
     #expect(mic.statusLine.hasPrefix("已暂时断开"))
 }
+
+@Test func batteryShowsOnlyWhileOnlineAndPicksQuarterSymbols() {
+    var mic = MicDevice()
+    mic.state.cloud.battery = 60
+    #expect(mic.battery == nil)
+    mic.state.connected = true
+    #expect(mic.battery?.text == "60%" && mic.battery?.symbol == "battery.50percent")
+    mic.state.cloud.battery = 5
+    #expect(mic.battery?.symbol == "battery.0percent" && mic.battery?.low == true)
+    mic.state.cloud.charging = true
+    #expect(mic.battery?.text == "充电 5%" && mic.battery?.symbol == "battery.100percent.bolt")
+    mic.state.cloud.battery = -1
+    #expect(mic.battery == nil)
+    mic.state.cloud.usbPower = true
+    #expect(mic.battery?.text == "外接电源")
+}

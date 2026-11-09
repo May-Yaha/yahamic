@@ -20,6 +20,8 @@ void pause(bool speaking);
 // Successful BLE write response confirms durable delivery; HTTP never runs on the BLE task.
 bool provision(const char* json, size_t size);
 std::string status();
+// 电池读数(main.cpp 的电池任务每秒一次),随 status() 报给 Mac;percent -1 = 没装电池。
+void set_battery(int percent, bool charging, bool usb);
 // Latest scan as `{"scan":n,"networks":[{ssid,rssi,secure}]}`, ≤512 bytes; `{"op":"scan"}` requests a new one.
 std::string wifi_networks();
 View snapshot();

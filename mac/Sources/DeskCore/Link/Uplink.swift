@@ -80,6 +80,11 @@ public final class Uplink: NSObject, @unchecked Sendable {
         get { queue.sync { tapHandler } }
         set { queue.sync { tapHandler = newValue } }
     }
+    /// 设置后解码 PCM 不再直接进抖动缓冲,交给它处理后自行写入(只留本人声音用);在内部串行队列上回调。
+    public var onPlayback: ((Data) -> Void)? {
+        get { queue.sync { playbackHandler } }
+        set { queue.sync { playbackHandler = newValue } }
+    }
     /// 原始 Opus 帧与其解码样本数(16 kHz),录音备份用;只回调解码成功的帧,在内部串行队列上回调。
     public var onOpus: ((Data, Int) -> Void)? {
         get { queue.sync { opusHandler } }
@@ -104,6 +109,7 @@ public final class Uplink: NSObject, @unchecked Sendable {
     private var stateHandler: ((State) -> Void)?
     private var logHandler: ((String) -> Void)?
     private var tapHandler: ((Data) -> Void)?
+    private var playbackHandler: ((Data) -> Void)?
     private var opusHandler: ((Data, Int) -> Void)?
     private var levelHandler: ((Double) -> Void)?
     private weak var sink: AudioSink?
@@ -445,7 +451,7 @@ public final class Uplink: NSObject, @unchecked Sendable {
                 let v = Double(s)
                 sumSq += v * v
             }
-            jitter.push(buf)
+            if let playbackHandler { playbackHandler(Data(UnsafeRawBufferPointer(buf))) } else { jitter.push(buf) }
         }
         diag.enqueuedFrames += 1
         let rms = (sumSq / Double(n)).squareRoot()

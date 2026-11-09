@@ -46,6 +46,7 @@ void battery_task(void*) {
     battery_percent.store(r.percent);
     battery_usb.store(r.usb);
     battery_charging.store(r.charging);
+    cloud::set_battery(r.percent, r.charging, r.usb);
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
@@ -157,6 +158,8 @@ class IdlePages {
     const size_t notices = notice_count(now);
     board::Screen screen;
     screen.status = status_line(s, battery, cloud_view.wifi_connected);
+    screen.battery = battery.percent;
+    screen.charging = battery.charging;
     // Pairing and speech always take precedence over the workbench; their taps are dropped.
     if (s.passkey || (s.live && !s.muted)) workbench.hold(now);
     if (s.passkey) {
@@ -333,7 +336,7 @@ class IdlePages {
 // Every visible field, so taps and data changes redraw at once; the home clock ticks separately.
 std::string fingerprint(const board::Screen& s) {
   std::string out = std::to_string(int(s.state)) + "|" + std::to_string(int(s.page)) + "|" + s.line1 + "|" +
-                    s.line2 + "|" + s.line3 + "|" + s.status + "|" + s.tone + "|" + s.alert.title + s.alert.level;
+                    s.line2 + "|" + s.line3 + "|" + s.status + "|" + std::to_string(s.battery) + std::to_string(s.charging) + "|" + s.tone + "|" + s.alert.title + s.alert.level;
   for (const auto& r : s.rows) out += "|" + r.title + "\x1f" + r.text + "\x1f" + r.level;
   for (int64_t v : s.trend) out += "|" + std::to_string(v);
   out += "|" + std::to_string(s.speed) + "|" + std::to_string(s.marquee_paused);

@@ -66,17 +66,23 @@ struct MenuPanelView: View {
                 Toggle("开机自启", isOn: Binding(
                     get: { model.launchAtLogin },
                     set: { model.setLaunchAtLogin($0) }))
-                    .toggleStyle(TileToggleStyle(symbol: "power"))
+                    .toggleStyle(TileToggleStyle(symbol: "power", color: .indigo))
             }
             HStack(spacing: PanelSpacing.section) {
                 Toggle("本地转文字", isOn: $model.localSTTEnabled)
-                    .toggleStyle(TileToggleStyle(symbol: "text.bubble.fill", detail: model.localSTTState.detail))
+                    .toggleStyle(TileToggleStyle(symbol: "text.bubble.fill", detail: model.localSTTState.detail, color: .teal))
                 Toggle("二次确认", isOn: $model.dictationConfirm)
                     .toggleStyle(TileToggleStyle(
                         symbol: "checkmark.bubble.fill",
-                        detail: model.dictationConfirm ? "改完回车插入" : "说完直接插入"))
+                        detail: model.dictationConfirm ? "改完回车插入" : "说完直接插入", color: .cyan))
                     .disabled(!model.localSTTEnabled)
             }
+            Toggle("只留本人声音", isOn: $model.ownVoiceOnly)
+                .toggleStyle(TileToggleStyle(
+                    symbol: "person.wave.2.fill",
+                    detail: !model.voiceProfile.ready ? "先在设置里录声纹"
+                        : model.ownVoiceOnly ? "过滤他人语段" : "不过滤", color: .purple))
+                .disabled(!model.voiceProfile.ready)
             if model.pttEnabled {
                 HStack(spacing: PanelSpacing.row) {
                     CircleIcon(symbol: "keyboard", tint: .accentColor)

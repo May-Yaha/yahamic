@@ -35,6 +35,8 @@ struct Screen {
   std::string line3;  // 中字第二行;工作台首页为通知条(空则隐藏)、通知页为序号
   float level = 0;    // 响度条,0..1(当前固件未用:Live 屏电平由波形振幅表现)
   std::string status; // 底部一行小字:电量、IP、RSSI、版本
+  int battery = -1;   // 底部状态行的电池图标:0..100;-1 = 没装电池(图标隐藏)
+  bool charging = false;
   // 首页 line1/line2 是麦克风与连接状态；管理员工作台 alert 非空时显示入口。
   // 总览 rows = 5 个云端分区；详情 rows 为明细；告警页 rows 为告警。
   display::Page page = display::Page::Home;

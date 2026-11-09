@@ -47,6 +47,13 @@ final class HomeModel: ObservableObject {
     @Published var dictationConfirm: Bool {
         didSet { defaults.set(dictationConfirm, forKey: "dictationConfirm") }
     }
+    /// 只留本人声音:有声纹档案时,本地转文字与送往 BlackHole 的音频都去掉不像本人的语段(BlackHole 晚约 0.75 s)。
+    @Published var ownVoiceOnly: Bool {
+        didSet {
+            defaults.set(ownVoiceOnly, forKey: "ownVoiceOnly")
+            applyOwnVoice()
+        }
+    }
     /// 按住讲话的键。HHKB 的 Fn 不上报 macOS,改选一颗修饰键。
     @Published var talkKey: TalkKey {
         didSet {
@@ -85,6 +92,9 @@ final class HomeModel: ObservableObject {
     var localSTTStopTask: Task<Void, Never>?
     var localSTTPreviewTask: Task<Void, Never>?
     var localSTTLive = LiveTranscript()
+    var localSTTOwnVoice: OwnVoiceFilter?
+    private var ownVoiceStream: OwnVoiceStream?
+    private var voiceProfileWatch: AnyCancellable?
     private var fn: FnListener?
     private var fnRetry: Timer?
     private var hardware: AudioHardwareWatcher?  // 设备增减/采样率变化 → 重建出口
@@ -116,6 +126,7 @@ final class HomeModel: ObservableObject {
         pttEnabled = storedLocalSTT || storedPTT
         localSTTEnabled = storedLocalSTT
         dictationConfirm = defaults.bool(forKey: "dictationConfirm")
+        ownVoiceOnly = defaults.object(forKey: "ownVoiceOnly") as? Bool ?? true
         if storedLocalSTT, !storedPTT { defaults.set(true, forKey: "ptt") }
         outputDeviceName = defaults.string(forKey: "outputDevice") ?? "BlackHole"
         talkKey = defaults.string(forKey: "talkKey").flatMap(TalkKey.init(rawValue:)) ?? .fn
@@ -156,6 +167,10 @@ final class HomeModel: ObservableObject {
         recordings.log = { [unowned self] in log($0) }
         recordings.loginExpired = { [unowned self] in cloud.panLoginExpired() }
         voiceProfile.log = { [unowned self] in log($0) }
+        // @Published 在赋值前发出:切回主线程下一拍再读,拿到的是新档案。
+        voiceProfileWatch = voiceProfile.$manifest.sink { [weak self] _ in
+            Task { @MainActor in self?.objectWillChange.send(); self?.applyOwnVoice() }
+        }
         firmware.log = { [unowned self] in log($0) }
         voiceProfile.capture = { [weak self] seconds in
             guard let self else { throw VoiceProfileError("Yaha Desk 已退出") }
@@ -349,6 +364,7 @@ final class HomeModel: ObservableObject {
             DispatchQueue.main.async { self?.overlay.push(level: db) }
         }
         uplink = link
+        applyOwnVoice()
         link.start()
         startDashboardReporter()
     }
@@ -356,6 +372,7 @@ final class HomeModel: ObservableObject {
     private func linkStateChanged(_ state: Uplink.State) {
         let startsTalking = state.connected && !state.muted && (mic.state.muted || !mic.state.connected)
         mic.state = state
+        if !state.connected { ownVoiceStream?.reset() }
         finishLocalDictationIfSafe(connected: state.connected, muted: state.muted)
         completePrivateAudioCaptureIfSafe(state)
         cloud.updateDeviceState(state)
@@ -368,6 +385,29 @@ final class HomeModel: ObservableObject {
         log(String(format: "指标 │ %@ │ %.0f dB │ %d 帧/s │ 缓冲 %.0f ms │ 溢 %d 欠 %d",
                    state.muted ? "静音" : "送声", state.levelDb, state.framesPerSecond,
                    state.bufferMs, state.overflows, state.underruns))
+    }
+
+    /// 本人声纹(开关打开且档案就绪时),否则 nil。
+    var ownVoiceProfile: [Float]? {
+        ownVoiceOnly && voiceProfile.ready ? voiceProfile.manifest.embedding : nil
+    }
+
+    /// 按开关与档案接上或撤掉 BlackHole 一路的本人声音过滤。
+    func applyOwnVoice() {
+        guard let uplink else { return }
+        guard let profile = ownVoiceProfile else {
+            if ownVoiceStream != nil { log("只留本人声音:已关闭") }
+            uplink.onPlayback = nil
+            ownVoiceStream = nil
+            return
+        }
+        if ownVoiceStream?.profile != profile {
+            ownVoiceStream = OwnVoiceStream(jitter: jitter, profile: profile)
+            log("只留本人声音:已开启(BlackHole 延后约 0.75 s)")
+        }
+        guard let stream = ownVoiceStream else { return }
+        // 链路重建也要重新接上;与 onState 同队列切主线程,帧序不乱。
+        uplink.onPlayback = { data in DispatchQueue.main.async { stream.push(data) } }
     }
 
     // 仪表盘上报(dashboard 特征):设备空闲屏大字时钟 + 2x2 仪表(CPU/内存/键鼠电量)

@@ -64,11 +64,13 @@ struct CircleIcon: View {
 struct TileToggleStyle: ToggleStyle {
     let symbol: String
     var detail: String = ""
+    /// 开态底色:每个功能一个颜色(同 iOS 设置页的彩色图标),不用状态四色,免得和开麦/静音混淆。
+    var color: Color = .accentColor
 
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.isOn.toggle() } label: {
             HStack(spacing: PanelSpacing.row) {
-                CircleIcon(symbol: symbol, tint: configuration.isOn ? .accentColor : nil)
+                CircleIcon(symbol: symbol, tint: configuration.isOn ? color : nil)
                 VStack(alignment: .leading, spacing: 1) {
                     configuration.label.font(.subheadline.weight(.medium)).lineLimit(1)
                     Text(detail.isEmpty ? (configuration.isOn ? "开" : "关") : detail)

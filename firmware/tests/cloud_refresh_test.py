@@ -186,6 +186,8 @@ int main() {
 
   require(cloud::status().find("\"display_revision\":0") != std::string::npos,
           "cloud state keeps display_revision for 0.2.0 Mac apps");
+  require(cloud::status().find("\"battery\":-1,\"charging\":false,\"usb_power\":false") != std::string::npos,
+          "cloud state reports no battery until the battery task has read one");
 }
 '''
 

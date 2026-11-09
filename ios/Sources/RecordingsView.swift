@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 网盘录音按天分组；点一下播放，再点停止。
+/// 网盘录音按天分组；点一下播放，再点暂停；确认过的听写文字显示在每条下面，底部是迷你播放条。
 struct RecordingsView: View {
     @EnvironmentObject private var recordings: RecordingStore
 
@@ -21,7 +21,7 @@ struct RecordingsView: View {
                 List {
                     ForEach(Self.days(recordings.items), id: \.day) { group in
                         Section(group.day.formatted(.dateTime.month().day().weekday())) {
-                            ForEach(group.items) { item in row(item) }
+                            ForEach(group.items) { take in TakeRow(take: take, player: recordings.player) }
                         }
                     }
                 }
@@ -30,29 +30,19 @@ struct RecordingsView: View {
         .navigationTitle("录音")
         .refreshable { await recordings.refresh() }
         .task { if recordings.loggedIn && recordings.items.isEmpty { await recordings.refresh() } }
-        .safeAreaInset(edge: .bottom) { Banner(text: recordings.message) }
-    }
-
-    private func row(_ item: PanFiles.Item) -> some View {
-        let playing = recordings.playingID == item.id
-        return Button { Task { await recordings.play(item) } } label: {
-            HStack(spacing: 12) {
-                Image(systemName: playing ? "stop.circle.fill" : "play.circle.fill").font(.title2).foregroundStyle(.tint)
-                    .accessibilityHidden(true)
-                Text(item.mtime.formatted(date: .omitted, time: .shortened)).foregroundStyle(.primary)
-                Spacer()
-                Text(ByteCountFormatter.string(fromByteCount: Int64(item.size), countStyle: .file))
-                    .font(.subheadline).foregroundStyle(.secondary)
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                MiniPlayerBar(player: recordings.player)
+                Banner(text: recordings.message)
             }
         }
-        .disabled(recordings.busy && !playing)
-        .accessibilityLabel((playing ? "停止 " : "播放 ") + item.mtime.formatted(date: .omitted, time: .shortened))
     }
 
     /// 按本地日期分组，组与组内都新的在前。
-    nonisolated static func days(_ items: [PanFiles.Item], calendar: Calendar = .current) -> [(day: Date, items: [PanFiles.Item])] {
+    nonisolated static func days(_ items: [PanFiles.Take], calendar: Calendar = .current) -> [(day: Date, items: [PanFiles.Take])] {
         Dictionary(grouping: items) { calendar.startOfDay(for: $0.mtime) }
             .map { (day: $0.key, items: $0.value.sorted { $0.mtime > $1.mtime }) }
             .sorted { $0.day > $1.day }
     }
 }
+

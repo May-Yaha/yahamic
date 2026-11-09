@@ -91,11 +91,15 @@ final class YahaDeskIOSTests: XCTestCase {
         XCTAssertEqual(ContentView.dmsLabel("offline"), "未在线")
     }
 
-    func testDiscardedDownloadIsRemoved() throws {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".opus")
-        try Data("broken".utf8).write(to: url)
-        RecordingStore.removeDownloadedFile(url)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+    /// 同名 .txt 挂到录音上，没有文字的录音照样列出，顺序跟列表一致。
+    func testTakesPairAudioWithText() {
+        let item = { (id: UInt64, path: String) in PanFiles.Item(id: id, path: path, size: 1, mtime: Date()) }
+        let takes = PanFiles.takes([item(1, "/d/101500.txt"), item(2, "/d/101500.opus"), item(3, "/d/093000.opus"),
+                                    item(4, "/d/093000.1.opus")])
+        XCTAssertEqual(takes.map(\.id), [2, 3, 4])
+        XCTAssertEqual(takes.map { $0.transcript?.id }, [1, nil, nil])
+        XCTAssertEqual(TakePlayer.clock(67.9), "1:07")
+        XCTAssertEqual(TakePlayer.clock(.nan), "0:00")
     }
 
     /// 连上过的网络点一下即连；开放网络不问密码；没存过的加密网络必须让用户输入。
@@ -151,7 +155,7 @@ final class YahaDeskIOSTests: XCTestCase {
     func testRecordingsGroupByLocalDayNewestFirst() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        let item = { (id: UInt64, at: TimeInterval) in PanFiles.Item(id: id, path: "/\(id)", size: 1, mtime: Date(timeIntervalSince1970: at)) }
+        let item = { (id: UInt64, at: TimeInterval) in PanFiles.Take(audio: PanFiles.Item(id: id, path: "/\(id).opus", size: 1, mtime: Date(timeIntervalSince1970: at))) }
         // 1_800_000_000 = 2027-01-15 16:00 +08:00；+9 小时跨到次日 01:00。
         let groups = RecordingsView.days([item(1, 1_800_000_000), item(2, 1_800_032_400), item(3, 1_800_003_600)], calendar: calendar)
         XCTAssertEqual(groups.map { $0.items.map(\.id) }, [[2], [3, 1]])

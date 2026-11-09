@@ -64,6 +64,7 @@ extension HomeModel {
             return
         }
         uplink.onAudioTap = { data in buffer.append(data) }
+        localSTTOwnVoice = ownVoiceProfile.map { OwnVoiceFilter(profile: $0) }
         localSTTState = .listening
         startLocalDictationPreview(buffer)
     }
@@ -76,7 +77,9 @@ extension HomeModel {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(150))
                 guard let self, !Task.isCancelled else { return }
-                let pcm = buffer.snapshot()
+                var pcm = buffer.snapshot()
+                if let filter = localSTTOwnVoice { pcm = await filter.filter(pcm) }
+                guard !Task.isCancelled else { return }
                 if let end = localSTTLive.cut(pcm) {
                     let segment = Data(pcm[localSTTLive.offset..<end])
                     guard let text = try? await localSpeech.transcribe(segment), !Task.isCancelled else { continue }
@@ -125,12 +128,20 @@ extension HomeModel {
 
     private func transcribe(_ utterance: LocalDictationCapture.Utterance, take: Date?) {
         localSTTWorkTask?.cancel()
+        let ownVoice = localSTTOwnVoice
+        localSTTOwnVoice = nil
         localSTTWorkTask = Task { [weak self] in
             guard let self else { return }
             do {
+                var pcm = utterance.pcm
+                if let ownVoice {
+                    pcm = await ownVoice.filter(pcm, final: true)
+                    if ownVoice.dropped > 0 { log("只留本人声音:去掉 \(ownVoice.dropped) 段非本人语音(每段 0.5 秒)") }
+                }
+                guard !Task.isCancelled else { return }
                 // 已定稿的前段沿用,只转剩下的尾段:松开后的等待与讲话时长无关,结果也与字幕一致。
                 let live = localSTTLive
-                let tail = live.tail(of: utterance.pcm)
+                let tail = live.tail(of: pcm)
                 let draft = tail.count < 6_400 && !live.committed.isEmpty
                     ? live.committed
                     : live.text(withTail: try await localSpeech.transcribe(tail))
