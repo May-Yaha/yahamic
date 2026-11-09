@@ -1,3 +1,4 @@
+import AppKit
 import ApplicationServices
 import Foundation
 import HuggingFace
@@ -33,25 +34,36 @@ protocol DictationTextTarget: AnyObject {
 }
 
 /// Fn 按下时锁定焦点对象；模型返回后只经辅助功能替换该对象的选区。
+/// 微信 4.x 这类不开放辅助功能树的 App 拿不到焦点对象:记下前台 App,插入时还是它才粘贴进去。
 @MainActor
 final class FocusedTextTarget: DictationTextTarget {
-    private let element: AXUIElement
+    private let element: AXUIElement?
+    private let app: pid_t
 
-    private init(element: AXUIElement) {
+    private init(element: AXUIElement?, app: pid_t) {
         self.element = element
+        self.app = app
     }
 
     static func capture() -> FocusedTextTarget? {
+        guard let front = NSWorkspace.shared.frontmostApplication,
+              front.processIdentifier != ProcessInfo.processInfo.processIdentifier
+        else { return nil }
         var value: CFTypeRef?
         guard
             AXUIElementCopyAttributeValue(
                 AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute as CFString, &value
             ) == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID()
-        else { return nil }
-        return FocusedTextTarget(element: unsafeBitCast(value, to: AXUIElement.self))
+        else { return FocusedTextTarget(element: nil, app: front.processIdentifier) }
+        return FocusedTextTarget(element: unsafeBitCast(value, to: AXUIElement.self), app: front.processIdentifier)
     }
 
     func insert(_ text: String) -> Bool {
+        guard let element else {
+            // 讲完切走了就不贴:文字不能落进别的窗口。
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app else { return false }
+            return Self.paste(text)
+        }
         var settable = DarwinBoolean(false)
         if AXUIElementIsAttributeSettable(
             element, kAXSelectedTextAttribute as CFString, &settable
@@ -64,6 +76,33 @@ final class FocusedTextTarget: DictationTextTarget {
         }
         // 终端、Electron 等不开放 AX 选区写入:像输入法一样把文字当键盘事件打给当前焦点。
         return Self.type(text)
+    }
+
+    /// 剪贴板 + ⌘V,半秒后还原剪贴板(期间用户自己复制了就不动)。
+    private static func paste(_ text: String) -> Bool {
+        let board = NSPasteboard.general
+        let saved = (board.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
+            return copy
+        }
+        board.clearContents()
+        let item = NSPasteboardItem()
+        item.setString(text, forType: .string)
+        item.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))  // 剪贴板管理器别记
+        board.writeObjects([item])
+        let mine = board.changeCount
+        for down in [true, false] {
+            guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: down) else { return false }  // V
+            event.flags = .maskCommand
+            event.post(tap: .cghidEventTap)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard board.changeCount == mine else { return }
+            board.clearContents()
+            if !saved.isEmpty { board.writeObjects(saved) }
+        }
+        return true
     }
 
     private static func type(_ text: String) -> Bool {
