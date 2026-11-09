@@ -45,7 +45,7 @@ std::atomic<uint16_t> wifi_reason{0};  // last failed join's wifi_err_reason_t; 
 uint32_t next_connect = 0, backoff = 2000;  // worker task only; network_cycle is the single esp_wifi_connect caller
 uint32_t scan_count = 0;  // guarded by lock, with networks
 std::string networks = R"({"scan":0,"networks":[]})";
-std::string firmware, client_id, refresh_token, access_token, daily_key, article_key, generation;
+std::string firmware, client_id, refresh_token, access_token, generation;
 uint32_t access_until = 0;
 nvs_handle_t storage = 0;
 bool wifi_started = false;
@@ -214,12 +214,6 @@ Json call(const char* name, cJSON* args) {
   return parse(text(content, "text"));
 }
 
-bool add_notice(const cJSON* card, const std::string& kind, const std::string& key) {
-  int64_t ttl;
-  if (!integer(card, "ttl_seconds", ttl, 1, 65535)) return false;
-  std::lock_guard<std::mutex> g(lock);
-  return view.notices.put(kind, key, text(card, "title"), text(card, "body"), int(ttl), now_ms());
-}
 // Read-only health overview; kept in memory only, so a reboot shows "loading" until the next poll.
 // 同一次调用带上设备状态,iPhone 经 desk_status 读最近一次上报。
 void monitor() {
@@ -236,23 +230,6 @@ void monitor() {
   std::lock_guard<std::mutex> g(lock);
   view.monitor = std::move(m);
   view.monitor_ms = now_ms();
-}
-void feed() {
-  auto args = object();
-  {
-    std::lock_guard<std::mutex> g(lock);
-    cJSON_AddStringToObject(args.get(), "daily", daily_key.c_str());
-    cJSON_AddStringToObject(args.get(), "article", article_key.c_str());
-  }
-  auto out = call("desk_feed", args.release());
-  if (!out) return;
-  const auto* cards = field(out.get(), "cards");
-  if (!cJSON_IsArray(cards) || cJSON_GetArraySize(cards) > 2) { error("invalid_feed"); return; }
-  const cJSON* card;
-  cJSON_ArrayForEach(card, cards) {
-    const auto kind = text(card, "kind"), key = text(card, "key");
-    if ((kind != "article" && kind != "daily") || key.empty() || key.size() > 64 || !add_notice(card, kind, key)) continue;
-  }
 }
 
 void wifi_event(void*, esp_event_base_t base, int32_t id, void* data) {
@@ -292,7 +269,6 @@ void apply_grant(const cJSON* j) {
   // A new device grant can belong to another account; never display the previous account's data.
   // Persisted state is bound to this generation; stale keys cannot load after a power loss.
   std::lock_guard<std::mutex> g(lock);
-  daily_key.clear(); article_key.clear();
   ++view.generation;
   view.monitor = {};
   view.monitor_ms = 0;
@@ -387,7 +363,7 @@ bool operation(uint32_t now, bool online) {
   return !stale;
 }
 void network_cycle(uint32_t now) {
-  static uint32_t next_feed = 0, next_monitor = 0;
+  static uint32_t next_monitor = 0;
   // Boot-time BLE pairing often starves the first auth (coex); retry in 2 s, doubling to 30 s while the AP stays away.
   if (wifi_up.load()) {
     backoff = 2000;
@@ -403,7 +379,6 @@ void network_cycle(uint32_t now) {
   if (!speaking.load() && operation(now, online)) next_monitor = now + 2000;  // show the new task state soon
   if (online) {
     if (!speaking.load() && int32_t(now - next_monitor) >= 0) { next_monitor = now + 60000; monitor(); }
-    if (!speaking.load() && int32_t(now - next_feed) >= 0) { next_feed = now + 600000; feed(); }
   }
 }
 bool initialize() {
@@ -499,11 +474,6 @@ std::string status() {
 std::string wifi_networks() {
   std::lock_guard<std::mutex> g(lock);
   return networks;
-}
-void shown(const std::string& kind, const std::string& key) {
-  std::lock_guard<std::mutex> g(lock);
-  if (kind == "daily") daily_key = key;
-  if (kind == "article") article_key = key;
 }
 bool agent_card(const std::string& key, const std::string& title, const std::string& body, int ttl) {
   std::lock_guard<std::mutex> g(lock);

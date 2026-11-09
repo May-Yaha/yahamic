@@ -12,8 +12,6 @@ int main() {
   w.tap(kTapAlerts, 0, 1000);  // overview-only targets do nothing at home
   w.tap(2, 0, 1000);
   assert(w.page() == Page::Home);
-  w.tap(kTapArticle, 0, 1000);  // empty content entry ignored
-  assert(w.page() == Page::Home);
   w.tap(kTapDevice, 0, 1000);
   assert(w.page() == Page::Detail && w.index() == size_t(kRows));
   w.tap(0, 0, 2000);  // the device detail returns home
@@ -70,7 +68,7 @@ int main() {
 
   // Notice buttons step through pending cards (next past the last returns home, previous stops at the
   // first), the speed button keeps the card, the background returns home; a shrinking list also returns.
-  w.tap(kTapArticle, 2, 270000, 0);
+  w.push_notice(0, 2, 270000);
   assert(w.page() == Page::Notice && w.index() == 0);
   w.tap(kTapPrev, 2, 270500);
   assert(w.page() == Page::Notice && w.index() == 0);
@@ -87,28 +85,28 @@ int main() {
   w.tap(kTapPause, 2, 273000);
   w.tap(kTapNext, 2, 273500);
   assert(!w.marquee_paused() && w.page() == Page::Home);
-  w.tap(kTapDaily, 2, 274000, 1);
+  w.push_notice(1, 2, 274000);
   assert(w.page() == Page::Notice && w.index() == 1);
   w.tap(0, 2, 274500);
-  w.tap(kTapArticle, 2, 275000, 0);
+  w.push_notice(0, 2, 275000);
   assert(w.page() == Page::Notice && w.index() == 0);
   w.tap(kTapEnd, 2, 275500);
   assert(w.page() == Page::Home);
-  w.tap(kTapArticle, 2, 276000, 0);
+  w.push_notice(0, 2, 276000);
   w.tap(kTapPrev, 2, 331500);
   assert(w.page() == Page::Notice && w.index() == 0);
   w.tap(0, 2, 332000);
   assert(w.page() == Page::Home);
-  w.tap(kTapArticle, 2, 332500, 0);
+  w.push_notice(0, 2, 332500);
   w.tap(kTapNext, 2, 333000);
   w.tap(kTapNext, 2, 333500);
   assert(w.page() == Page::Home);
-  w.tap(kTapArticle, 2, 334000, 0);
+  w.push_notice(0, 2, 334000);
   w.tap(kTapNext, 2, 334500);
   w.tick(335000, 1);
   assert(w.page() == Page::Home);
 
-  // A pushed agent card has a real route even when no article or daily card exists.
+  // A single pushed agent card opens and closes the same way.
   w.push_notice(0, 1, 336000);
   assert(w.page() == Page::Notice && w.index() == 0);
   w.tap(kTapEnd, 1, 336500);
@@ -130,19 +128,18 @@ int main() {
   assert(w.page() == Page::Alerts);
 
   Notices n;
-  assert(n.put("article", "a", "文章", "正文", 30, 0));
-  assert(n.put("daily", "d", "日报", "内容", 60, 0));
-  assert(n.put("agent", "1", "消息", "内容", 10, 0));
-  assert(n.active(9999) && n.size(9999) == 3);
-  assert(n.get(2, 9999).kind == "agent");
-  n.clear_agent();
-  assert(n.size(9999) == 2);
-  assert(n.get(0, 10000).title == "文章");
-  assert(n.get(1, 10000).title == "日报"); // agent expires exactly at ttl
-  assert(n.get(0, 30000).title == "日报" && n.size(30000) == 1);
+  assert(n.put("agent", "1", "消息", "内容", 30, 0));
+  assert(n.put("agent", "2", "第二条", "内容", 60, 0));
+  assert(n.put("agent", "1", "改过的消息", "内容", 10, 0));  // same key overwrites in place
+  assert(n.size(9999) == 2 && n.get(0, 9999).title == "改过的消息");
+  assert(n.get(0, 10000).title == "第二条" && n.size(10000) == 1);  // the first expires exactly at ttl
   assert(!n.active(60000));
   assert(!n.put("agent", "x", "坏", "", 65536, 0));
-  assert(n.put("daily", "d2", "新日报", "", 10, 0xfffffff0));
+  for (int i = 0; i < 21; ++i) assert(n.put("agent", std::to_string(i), "满", "", 10, 0));
+  assert(n.size(0) == 20 && n.get(0, 0).key == "1");  // overflow drops the oldest
+  n.clear_agent();
+  assert(n.size(0) == 0);
+  assert(n.put("agent", "w", "回绕", "", 10, 0xfffffff0));
   assert(n.active(0x10));
   assert(!n.active(0x2710));
   std::cout << "display behavior tests passed\n";

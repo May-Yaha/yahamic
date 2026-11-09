@@ -372,7 +372,7 @@ lv_obj_t* make_panel(lv_obj_t* parent, int y) {
   return panel;
 }
 
-// 首页只突出麦克风、文章与日报；Mac 指标留在设备详情，工作台仅管理员可见。
+// 首页只突出麦克风；Mac 指标留在设备详情，工作台仅管理员可见。
 lv_obj_t* home_root = nullptr;
 lv_obj_t* home_clock = nullptr;
 lv_obj_t* home_date = nullptr;
@@ -474,15 +474,14 @@ void make_home() {
   lv_obj_t* hint = make_text(mic, 140, 260, kGray);
   lv_obj_align(hint, LV_ALIGN_LEFT_MID, 140, 38);
   lv_label_set_text(hint, "按住 Fn 讲话");
-  for (int i = 0; i < 2; ++i) {
-    lv_obj_t* item = card(i ? 248 : 28, 278, 204, 112, i ? display::kTapDaily : display::kTapArticle);
-    lv_obj_t* title = make_text(item, 24, 156, kWhite);
-    lv_obj_align(title, LV_ALIGN_LEFT_MID, 24, -18);
-    lv_label_set_text(title, i ? "日报" : "文章");
-    lv_obj_t* sub = make_text(item, 24, 156, kGray);
-    lv_obj_align(sub, LV_ALIGN_LEFT_MID, 24, 24);
-    lv_label_set_text(sub, i ? "今日重点" : "最新内容");
-  }
+  // 息屏省电:main.cpp 关面板,触摸任意处再点亮。
+  lv_obj_t* off = card(kRowX, 278, kRowW, 112, display::kTapScreenOff);
+  lv_obj_t* off_title = make_text(off, 24, 260, kWhite);
+  lv_obj_align(off_title, LV_ALIGN_LEFT_MID, 24, -18);
+  lv_label_set_text(off_title, "息屏");
+  lv_obj_t* off_hint = make_text(off, 24, 260, kGray);
+  lv_obj_align(off_hint, LV_ALIGN_LEFT_MID, 24, 24);
+  lv_label_set_text(off_hint, "省电 · 触摸唤醒");
   home_hub = make_row(home_root, 402, 90, display::kTapHub);
   home_status = make_footer(home_root);
 }
@@ -839,7 +838,7 @@ void draw(const Screen& s) {
         {
           const bool fresh = s.line1 != lv_label_get_text(card_title);
           set_text(card_title, s.line1.c_str());
-          set_text(card_source, s.tone == "daily" ? "AI 日报" : s.tone == "article" ? "最新文章" : "雅哈");
+          set_text(card_source, "雅哈");
           set_card_body(s.line2, s.speed, fresh, s.marquee_paused);
         }
         set_text(card_status, s.line3.c_str());

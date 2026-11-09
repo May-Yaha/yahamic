@@ -23,7 +23,6 @@ std::string status();
 // Latest scan as `{"scan":n,"networks":[{ssid,rssi,secure}]}`, ≤512 bytes; `{"op":"scan"}` requests a new one.
 std::string wifi_networks();
 View snapshot();
-void shown(const std::string& kind, const std::string& key);
 // DMS card 指令(dms.cpp 已用 dmswire::card 校验):key 为 message_id,同 key 覆盖同一张卡。
 bool agent_card(const std::string& key, const std::string& title, const std::string& body, int ttl);
 void clear_agent_cards();

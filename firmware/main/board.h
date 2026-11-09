@@ -49,7 +49,7 @@ struct Screen {
 void init(Board& b);
 bool key_down();
 // 触摸(CST9220):LVGL 点击回调记下目标,主循环每圈取一次;无点击返回 display::kTapNone。
-// 首页 kTapArticle/kTapDaily/kTapHub、麦克风卡 kTapDevice；阅读页另有翻页、暂停与速度循环。
+// 首页 kTapHub、麦克风卡 kTapDevice、息屏卡 kTapScreenOff；阅读页另有翻页、暂停与速度循环。
 int take_tap();
 // 告警页第 n 行被按住 1.5 s(desk.operate 的确认动作);无长按返回 -1。
 int take_hold();
@@ -81,6 +81,9 @@ void draw_level(float level);   // 只重画响度条区域(当前固件未调�
 // 遥测见日志)。why 不用 lv_chart 折线/为何分批 dispatch 见 board_screen.h 与实现注释。
 void draw_spectrum(const float* bars, int count);
 void set_brightness(uint8_t percent);
+// 息屏:关面板显示 + 亮度归零(AMOLED 黑屏几乎不耗电);触摸芯片照常工作。
+void set_display(bool on);
+uint32_t touch_idle_ms();  // 距最近一次触摸的毫秒数(LVGL 活动计时),息屏时用来判断唤醒
 uint32_t spectrum_frame_count();  // 遥测:频谱累计渲染帧数
 void request_screen_dump();       // 回传一帧屏幕(经日志口,Mac 侧重建成图)
 void render_timing(int32_t& frame_us, int32_t& dma_us);  // 遥测:最近一帧耗时/其中传屏耗时

@@ -66,12 +66,12 @@ for text in ['告警 20 条', '无告警', '数据180分钟未更新', '告警']
     sub.check(text, 380)
 for text in ['23:59', '长按重试', '长按取消', '长按暂停', '长按恢复', '长按补跑']:
     sub.check(text, 120)
-# Home: microphone card, article/daily shortcuts, the Zhi.AI entry row and overview title.
+# Home: microphone card, the screen-off card, the Zhi.AI entry row and overview title.
 sub.check('麦克风', 260)
 for text in ['按住 Fn 讲话', '麦克风未连接', '已连接 · 静音', '等待电脑连接']:
     sub.check(text, 260)
-for text in ['文章', '日报', '今日重点', '最新内容']:
-    sub.check(text, 156)
+for text in ['息屏', '省电 · 触摸唤醒']:
+    sub.check(text, 260)
 sub.check('工作台', 90)
 for text in ['告警 20 条', '无告警', '数据180分钟未更新', '离线', '等待数据']:
     sub.check(text, 270)
@@ -86,8 +86,7 @@ for text in ['电池 充电中 100%', '外接电源', '电池 --', '网络 已�
              '鼠标 100% 键盘 100%', '固件 0.0.0', '22/22', '在电脑上输入配对码', '请在电脑上运行 Yaha Desk']:
     sub.check(text, 424)
 # Notice card source, buttons and speed controls.
-for text in ['AI 日报', '最新文章', '雅哈']:
-    small.check(text, 340)
+small.check('雅哈', 340)
 for text in ['上一篇', '下一篇']:
     sub.check(text, 100)
 for text in ['慢', '中', '快']:

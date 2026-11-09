@@ -15,7 +15,7 @@ args = parser.parse_args()
 source = args.source.read_text()
 # Keep the real globals, generation guard, NVS serialization, HTTP callbacks,
 # post() and token(). Only radio/time/flash APIs below are simulated.
-production = source[source.index("// Fixed origin"):source.index("void feed() {")]
+production = source[source.index("// Fixed origin"):source.index("void wifi_event(")]
 start = source.index("std::string status() {")
 production += source[start:source.index("\n}\n", start) + len("\n}\n")]
 

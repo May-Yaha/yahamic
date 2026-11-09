@@ -59,6 +59,7 @@ constexpr uint32_t kDashboardFreshMs = 10000;  // Mac 指标只在设备详情�
 constexpr uint32_t kClockTickMs = 1000;        // 工作台首页时钟重绘节奏(秒级)
 constexpr uint32_t kMonitorStaleMs = 180000;   // 云端 60 s 一轮,连续三轮没拿到就灰显并提示
 constexpr uint32_t kOperationShownMs = 10000;  // 告警页标题显示长按操作结果的时长
+constexpr uint32_t kWakeSettleMs = 500;       // 唤醒那一下触摸松手时的点击不算数
 constexpr uint32_t kHoldSettleMs = 1600;       // 长按 1.5 s 内告警行变过就丢弃:按下时那一行可能是另一条告警
 
 uint32_t now_ms() { return uint32_t(esp_timer_get_time() / 1000); }
@@ -181,14 +182,7 @@ class IdlePages {
       speed = (speed + 1) % display::kSpeeds;
       save_speed(speed);
     }
-    size_t selected = 0;
-    if (tap == display::kTapArticle || tap == display::kTapDaily) {
-      const char* kind = tap == display::kTapArticle ? "article" : "daily";
-      bool found = false;
-      for (size_t i = 0; i < notices; ++i) if (notice(i, now).kind == kind) { selected = i, found = true; break; }
-      if (!found) tap = display::kTapNone;
-    }
-    if (tap != display::kTapNone) workbench.tap(tap, notices, now, selected);
+    if (tap != display::kTapNone) workbench.tap(tap, notices, now);
     workbench.tick(now, notices);
     screen.state = board::Screen::State::Workbench;
     screen.page = workbench.page();
@@ -196,11 +190,6 @@ class IdlePages {
     screen.marquee_paused = workbench.marquee_paused();
     compose(screen, s, battery, now, notices, version);
     return screen;
-  }
-  void shown(const board::Screen& screen, uint32_t now) {
-    if (screen.state != board::Screen::State::Workbench || screen.page != display::Page::Notice) return;
-    const auto n = notice(workbench.index(), now);
-    if (n.active(now) && n.kind != "ble") cloud::shown(n.kind, n.key);
   }
 
  private:
@@ -410,6 +399,8 @@ extern "C" void app_main() {
   bool was_live = false;
   uint32_t live_since = 0;  // 本次 Live 的起点(计时用)
   IdlePages idle;
+  bool screen_off = false;  // 首页息屏卡关的;不存 NVS,重启总是亮屏
+  uint32_t off_at = 0, wake_at = 0;
 
   while (true) {
     uint32_t now = now_ms();
@@ -441,10 +432,27 @@ extern "C" void app_main() {
     const bool live_now = s.live && !s.muted && !s.passkey;
     if (live_now && !was_live) live_since = now;
     was_live = live_now;
-    board::Screen screen = idle.screen(s, battery, now, live_since, board::take_tap(), board::take_hold(), version);
+    int tap = board::take_tap(), hold = board::take_hold();
+    // 息屏期间触摸任意处唤醒(这次触摸不当点击);配对码必须看得见,也会点亮。
+    if (screen_off && (s.passkey || board::touch_idle_ms() < now - off_at)) {
+      screen_off = false;
+      wake_at = now;
+      board::set_display(true);
+      shown.clear();  // 关屏期间没画,醒来整屏重画
+    }
+    if (screen_off || now - wake_at < kWakeSettleMs) tap = display::kTapNone, hold = -1;
+    if (tap == display::kTapScreenOff) {
+      screen_off = true;
+      off_at = now;
+      board::set_display(false);
+      tap = display::kTapNone;
+    }
+    board::Screen screen = idle.screen(s, battery, now, live_since, tap, hold, version);
     const bool ticking = screen.state == board::Screen::State::Workbench && screen.page == display::Page::Home;
     std::string print = fingerprint(screen);
-    if (print != shown) {
+    if (screen_off) {
+      // 关屏不画:省下渲染与传屏的电
+    } else if (print != shown) {
       shown = std::move(print);
       board::draw(screen);
       next_tick = now + kClockTickMs;
@@ -452,10 +460,9 @@ extern "C" void app_main() {
       next_tick = now + kClockTickMs;
       board::draw(screen);  // 截图回传在 draw 里;首页时钟内容不在指纹里,按秒重画
     }
-    idle.shown(screen, now);
     // 只在 Live(按住 Fn 送声)时画频谱律动图;静音屏保持简洁。频带约
     // 60 ms 一刷新,帧间平滑/重心/相位连续动力学在 board 侧抹平台阶。
-    if (screen.state == board::Screen::State::Live) {
+    if (!screen_off && screen.state == board::Screen::State::Live) {
       if (audio::spectrum(bars, kSpecBars)) board::draw_spectrum(bars, kSpecBars);
     }
 

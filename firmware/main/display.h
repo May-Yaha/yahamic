@@ -34,13 +34,13 @@ struct Monitor {
   std::vector<Alert> alerts;
 };
 
-// Home exposes microphone, articles and daily reports; only admins see the workbench entry.
+// Home exposes the microphone; only admins see the workbench entry. Agent cards open Notice.
 // Notice supports previous/next, pause and a cycling speed button.
 enum class Page { Home, Overview, Detail, Alerts, Notice };
 constexpr int kRows = 5;  // cloud sections; Detail(kRows) is the local device
 constexpr int kTapNone = -1, kTapAlerts = 100, kTapHub = 102, kTapDevice = 103;
-constexpr int kTapPrev = 104, kTapNext = 105, kTapPause = 106, kTapArticle = 107, kTapDaily = 108;
-constexpr int kTapSpeedCycle = 109, kTapEnd = 113, kSpeeds = 3;
+constexpr int kTapPrev = 104, kTapNext = 105, kTapPause = 106;
+constexpr int kTapSpeedCycle = 109, kTapScreenOff = 110, kTapEnd = 113, kSpeeds = 3;
 constexpr uint32_t kIdleMs = 60000;
 // A tap this soon after a page switch was aimed at the previous page (taps queue for about a frame).
 constexpr uint32_t kSettleMs = 250;
@@ -64,12 +64,10 @@ class Workbench {
   void push_notice(size_t index, size_t notices, uint32_t now) {
     if (page_ == Page::Home && index < notices) open(Page::Notice, index, now);
   }
-  void tap(int target, size_t notices, uint32_t now, size_t selected = 0) {
+  void tap(int target, size_t notices, uint32_t now) {
     if (uint32_t(now - last_) < kSettleMs) return;
     if (page_ == Page::Home) {
       if (target == kTapHub) open(Page::Overview, 0, now);
-      else if ((target == kTapArticle || target == kTapDaily) && notices)
-        open(Page::Notice, selected < notices ? selected : 0, now);
       else if (target == kTapDevice) open(Page::Detail, kRows, now);
     } else if (page_ == Page::Overview) {
       if (target == kTapAlerts) open(Page::Alerts, 0, now);
@@ -150,14 +148,14 @@ class Notices {
            const std::string& body, int ttl, uint32_t now) {
     if (ttl < 1 || ttl > 65535 || title.empty() || title.size() + body.size() > 509) return false;
     for (auto& n : items_) {
-      if ((kind != "agent" && n.kind == kind) || (n.kind == kind && n.key == key)) {
+      if (n.kind == kind && n.key == key) {
         n = {kind, key, title, body, now + uint32_t(ttl) * 1000};
         return true;
       }
     }
     prune(now);
-    // shortcut: 20 pending agent messages + 2 feed cards; retain newest on sustained overflow.
-    if (items_.size() == 22) items_.erase(items_.begin());
+    // shortcut: 20 pending agent messages; retain newest on sustained overflow.
+    if (items_.size() == 20) items_.erase(items_.begin());
     items_.push_back({kind, key, title, body, now + uint32_t(ttl) * 1000});
     return true;
   }

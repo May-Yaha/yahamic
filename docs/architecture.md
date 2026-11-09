@@ -38,10 +38,6 @@ sequenceDiagram
         Device->>API: desk_operate（token + action）
         API-->>Device: 一行结果，约2秒后重新读取告警
     end
-    loop 设备约10分钟读取内容
-        Device->>API: desk_feed（已保留的文章/日报key）
-        API-->>Device: 最新文章与日报
-    end
     Mac->>Device: BLE dashboard（约3秒）/ 本机静音操作
     Device-->>Mac: BLE Opus音频 / 静音 / 无凭据云状态
 ```
@@ -50,7 +46,7 @@ sequenceDiagram
 
 - 原GATT UUID、音频与静音含义保留；dashboard同时接受旧10字节与新12字节。新能力用info的`cloud 1`和新特征判断；`display 1`在轮播删除后仍保留，因0.2.0 Mac以它判定配网与12字节dashboard；无 networks 特征的旧固件回到手动输入 Wi-Fi 名称。
 - `desk.configure`不能调用`desk_feed`或`desk_monitor`。设备控制只走网盘设备服务，yahaops 不再下发命令。设备授权仍用本人专用公开应用，只登记`desk.sync`，活跃管理员另加`desk.operate`（设备只回传服务端签发的单次令牌，不能指定任务或参数）；两份授权、两套凭据存放边界分开。
-- 0.2.0 固件仍调的`desk_pull`被API接受并恒返回空指令。通知按TTL独立过期，最多保留22条（agent 卡片与文章/日报合计，满了淘汰最旧的）。健康总览超过3分钟未更新时清掉等级并提示过期。
+- 0.2.0 固件仍调的`desk_pull`被API接受并恒返回空指令。通知按TTL独立过期，最多保留20条 agent 卡片（满了淘汰最旧的；0.4.2 起固件不再调用`desk_feed`）。健康总览超过3分钟未更新时清掉等级并提示过期。
 - 重新授权建立新的设备会话，旧账号的消息与总览不能进入新会话；断电恢复也遵守同一边界。
 - 配对和讲话优先；Mac断开仍可通过Wi-Fi展示内容，Mac指标过期显示未知。云端网络错误不能卡住音频采集和主屏幕循环。
 - 发布先API、后Mac/固件；固件烧录和浏览器登录由用户授权/操作，构建通过不代表真机性能或实际授权通过。

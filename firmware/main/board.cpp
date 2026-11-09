@@ -845,4 +845,19 @@ void set_brightness(uint8_t percent) {
   esp_lcd_panel_io_tx_param(panel_io, kWriteCmd | (uint32_t(kBrightnessCmd) << 8), &level, 1);
 }
 
+void set_display(bool on) {
+  // 持 LVGL 锁:命令不与正在进行的刷屏交错。
+  if (!panel || !lvgl_port_lock(0)) return;
+  set_brightness(on ? 100 : 0);
+  esp_lcd_panel_disp_on_off(panel, on);
+  lvgl_port_unlock();
+}
+
+uint32_t touch_idle_ms() {
+  if (!lvgl_port_lock(0)) return UINT32_MAX;
+  const uint32_t ms = lv_display_get_inactive_time(nullptr);
+  lvgl_port_unlock();
+  return ms;
+}
+
 }  // namespace board
