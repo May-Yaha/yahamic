@@ -15,11 +15,9 @@ import WebKit
 /// Source: https://pan.baidu.com/union/doc/使用入门/接入授权/快速授权/
 enum PanLogin {
     static let appKey = "yausCBE5H5qb1qTFe40KpkP1x6zxXBrd"
-    static let macStatePrefix = "yahadesk-macos."
-    static let redirectURI = URL(string: "https://hub.flyaha.top/api/v1/baidu-pan/callback")!
+    /// Registered in the Baidu console; Baidu redirects here directly, so the code never passes a web page.
+    static let redirectURI = URL(string: "com.yaha.desk:/baidu-pan/oauth")!
     static let tokenURL = URL(string: "https://hub.flyaha.top/api/v1/baidu-pan/desk/token")!
-    static let macCallbackScheme = "com.yaha.desk"
-    static let macCallbackPath = "/baidu-pan/oauth"
     static let renewalWindow: TimeInterval = 7 * 86_400
 
     enum Navigation: Equatable {
@@ -40,18 +38,10 @@ enum PanLogin {
         return c.url!
     }
 
-    /// Mac: the hub bridge page forwards `?code=&state=` as `com.yaha.desk:/baidu-pan/oauth#state=…&code=…`.
-    static func macCode(_ url: URL, state: String) -> String? {
-        guard state.hasPrefix(macStatePrefix), url.scheme == macCallbackScheme, url.host == nil,
-              url.path == macCallbackPath, url.query == nil, let fragment = url.fragment else { return nil }
-        return code(fields(fragment), state: state)
-    }
-
-    /// iOS: the login WebView stops at the registered callback before the request leaves the device.
+    /// Baidu returns `com.yaha.desk:/baidu-pan/oauth?code=…&state=…`; anything else at that address is a rejection.
     static func navigation(_ url: URL, state: String) -> Navigation {
-        guard url.scheme == redirectURI.scheme, url.host == redirectURI.host, url.path == redirectURI.path else {
-            return .allow
-        }
+        guard url.scheme == redirectURI.scheme else { return .allow }
+        guard url.host == nil, url.path == redirectURI.path, url.fragment == nil else { return .reject }
         return code(url.query.flatMap(fields), state: state).map(Navigation.code) ?? .reject
     }
 
@@ -188,7 +178,7 @@ extension PanKeychain {
 #if os(macOS)
 @MainActor
 final class PanLoginWindow: NSObject, ASWebAuthenticationPresentationContextProviding {
-    private let state = PanLogin.macStatePrefix + OAuthPKCE.random()
+    private let state = OAuthPKCE.random()
     private let fallbackAnchor = NSWindow()
     private var session: ASWebAuthenticationSession?
     private var completion: CheckedContinuation<String, Error>?
@@ -213,7 +203,7 @@ final class PanLoginWindow: NSObject, ASWebAuthenticationPresentationContextProv
     private func show() {
         let session = ASWebAuthenticationSession(
             url: PanLogin.authorizeURL(state: state),
-            callback: .customScheme(PanLogin.macCallbackScheme)
+            callback: .customScheme(PanLogin.redirectURI.scheme!)
         ) { [weak self] url, error in
             Task { @MainActor [weak self] in self?.received(url, error: error) }
         }
@@ -236,7 +226,7 @@ final class PanLoginWindow: NSObject, ASWebAuthenticationPresentationContextProv
             }
             return
         }
-        guard let url, let code = PanLogin.macCode(url, state: state) else {
+        guard let url, case let .code(code) = PanLogin.navigation(url, state: state) else {
             finish(.failure(DeskProtocolError("网盘登录未完成或被拒绝")))
             return
         }
@@ -324,7 +314,7 @@ final class PanLoginWindow: NSObject, WKNavigationDelegate, UIAdaptivePresentati
             decisionHandler(.cancel)
             finish(.failure(DeskProtocolError("网盘登录未完成或被拒绝")))
         case let .code(code):
-            decisionHandler(.cancel)  // the code never reaches hub.flyaha.top's page or logs
+            decisionHandler(.cancel)
             finish(.success(code))
         }
     }

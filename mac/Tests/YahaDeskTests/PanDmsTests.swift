@@ -5,32 +5,26 @@ import DeskProtocol
 
 @Test func panLoginAcceptsOnlyTheMatchingCodeCallback() throws {
     func url(_ s: String) -> URL { URL(string: s)! }
-    let state = PanLogin.macStatePrefix + "random"
-    #expect(PanLogin.macCode(url("com.yaha.desk:/baidu-pan/oauth#state=\(state)&code=a%2Bb"), state: state) == "a+b")
-    for raw in ["com.yaha.desk:/baidu-pan/oauth#state=\(state)",
-                "com.yaha.desk:/baidu-pan/oauth#state=other&code=c",
-                "com.yaha.desk:/baidu-pan/oauth#state=\(state)&code=c&code=d",
-                "com.yaha.desk:/baidu-pan/oauth#state=\(state)&error=access_denied",
-                "com.yaha.desk:/baidu-pan/oauth#state=\(state)&code=c&errno=10200",
-                "com.yaha.desk:/baidu-pan/oauth?code=q#state=\(state)&code=c",
-                "com.yaha.desk://evil/baidu-pan/oauth#state=\(state)&code=c",
-                "com.yaha.desk:/other#state=\(state)&code=c",
-                "com.evil.desk:/baidu-pan/oauth#state=\(state)&code=c"] {
-        #expect(PanLogin.macCode(url(raw), state: state) == nil, "\(raw)")
+    let state = "random"
+    #expect(PanLogin.navigation(url("com.yaha.desk:/baidu-pan/oauth?code=a%2Bb&state=\(state)"), state: state) == .code("a+b"))
+    for raw in ["com.yaha.desk:/baidu-pan/oauth?state=\(state)",
+                "com.yaha.desk:/baidu-pan/oauth?state=other&code=c",
+                "com.yaha.desk:/baidu-pan/oauth?state=\(state)&code=c&code=d",
+                "com.yaha.desk:/baidu-pan/oauth?state=\(state)&error=access_denied",
+                "com.yaha.desk:/baidu-pan/oauth?state=\(state)&code=c&errno=10200",
+                "com.yaha.desk:/baidu-pan/oauth?state=\(state)&code=c#code=d",
+                "com.yaha.desk://evil/baidu-pan/oauth?state=\(state)&code=c",
+                "com.yaha.desk:/other?state=\(state)&code=c"] {
+        #expect(PanLogin.navigation(url(raw), state: state) == .reject, "\(raw)")
     }
-    #expect(PanLogin.macCode(url("com.yaha.desk:/baidu-pan/oauth#state=ios&code=c"), state: "ios") == nil)
-
-    let callback = PanLogin.redirectURI.absoluteString
-    #expect(PanLogin.navigation(url(callback + "?code=c1&state=ok"), state: "ok") == .code("c1"))
-    for raw in [callback + "?code=c1&state=bad", callback + "?error=access_denied&state=ok", callback + "#code=c&state=ok"] {
-        #expect(PanLogin.navigation(url(raw), state: "ok") == .reject, "\(raw)")
+    for raw in ["com.evil.desk:/baidu-pan/oauth?state=\(state)&code=c", "https://pan.baidu.com/union/oauth/authorize?client_id=x"] {
+        #expect(PanLogin.navigation(url(raw), state: state) == .allow, "\(raw)")
     }
-    #expect(PanLogin.navigation(url("https://pan.baidu.com/union/oauth/authorize?client_id=x"), state: "ok") == .allow)
 
     let authorization = URLComponents(url: PanLogin.authorizeURL(state: state), resolvingAgainstBaseURL: false)!
     #expect(authorization.host == "pan.baidu.com" && authorization.path == "/union/oauth/authorize")
     let query = Dictionary(uniqueKeysWithValues: authorization.queryItems!.map { ($0.name, $0.value ?? "") })
-    #expect(query == ["client_id": PanLogin.appKey, "redirect_uri": callback, "scope": "nd_open_read,nd_open_write",
+    #expect(query == ["client_id": PanLogin.appKey, "redirect_uri": "com.yaha.desk:/baidu-pan/oauth", "scope": "nd_open_read,nd_open_write",
                       "show_dir": "1", "state": state])
 }
 

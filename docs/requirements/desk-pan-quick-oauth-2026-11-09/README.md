@@ -11,11 +11,12 @@
 
 ## 链路
 
-1. 授权页：`/union/oauth/authorize?client_id&redirect_uri=https://hub.flyaha.top/api/v1/baidu-pan/callback&scope=nd_open_read,nd_open_write&show_dir=1&state`。
+1. 授权页：`/union/oauth/authorize?client_id&redirect_uri=com.yaha.desk:/baidu-pan/oauth&scope=nd_open_read,nd_open_write&show_dir=1&state`。
    `show_dir=1` 来自百度授权页脚本，官方文档只写“目录级授权必须传递目录级授权标识”。
-2. 回调：
-   - Mac：`ASWebAuthenticationSession` → hub 桥接页把 `?code&state` 转成 `com.yaha.desk:/baidu-pan/oauth#state&code`。
-   - iOS：WKWebView 在跳往回调地址前取消导航，code 不离开手机。
+   回调地址由用户在百度控制台登记；换取 code 时 hub 固定传同一地址。
+2. 回调：百度直接跳到 `com.yaha.desk:/baidu-pan/oauth?code&state`，不经过任何网页。
+   - Mac：`ASWebAuthenticationSession` 按 `com.yaha.desk` scheme 截获。
+   - iOS：WKWebView 在跳往回调地址前取消导航。
 3. 换取/续期：`POST /api/v1/baidu-pan/desk/token`，body 为 `{"code"}` 或 `{"refresh_token"}`；
    返回百度 `data` 原样字段。10403 表示 code/refresh_token 已失效，只能重新登录。
 4. App 校验 `authorized_paths` 覆盖 `/apps/拾见/录音`；不覆盖即报错，不保存。
@@ -24,8 +25,7 @@
 
 ## 已知风险
 
-- Mac 的 code 会出现在 hub 回调 GET 的 URL 里（nginx 访问日志可能记录）。code 10 分钟内一次性有效，
-  且没有 SecretKey 无法换取。
+- 换取 code 仍需服务端 SecretKey；hub 的 AppKey/SecretKey 必须与 App 的 AppKey 属同一百度应用，否则百度返回 20038。
 - DMS（`xpan/device`）是否接受目录级令牌未经实测；真机登录后绑定/静音须验收。
 - 新账号若还没有 `/apps/拾见/录音`，授权页可能无法选到；此时选 `/apps/拾见`。
 
