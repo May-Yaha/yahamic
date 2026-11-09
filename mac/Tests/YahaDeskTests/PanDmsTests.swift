@@ -6,25 +6,25 @@ import DeskProtocol
 @Test func panLoginAcceptsOnlyTheMatchingCodeCallback() throws {
     func url(_ s: String) -> URL { URL(string: s)! }
     let state = "random"
-    #expect(PanLogin.navigation(url("com.yaha.desk:/baidu-pan/oauth?code=a%2Bb&state=\(state)"), state: state) == .code("a+b"))
-    for raw in ["com.yaha.desk:/baidu-pan/oauth?state=\(state)",
-                "com.yaha.desk:/baidu-pan/oauth?state=other&code=c",
-                "com.yaha.desk:/baidu-pan/oauth?state=\(state)&code=c&code=d",
-                "com.yaha.desk:/baidu-pan/oauth?state=\(state)&error=access_denied",
-                "com.yaha.desk:/baidu-pan/oauth?state=\(state)&code=c&errno=10200",
-                "com.yaha.desk:/baidu-pan/oauth?state=\(state)&code=c#code=d",
-                "com.yaha.desk://evil/baidu-pan/oauth?state=\(state)&code=c",
-                "com.yaha.desk:/other?state=\(state)&code=c"] {
+    #expect(PanLogin.navigation(url("yahadesk://oauth?code=a%2Bb&state=\(state)"), state: state) == .code("a+b"))
+    for raw in ["yahadesk://oauth?state=\(state)",
+                "yahadesk://oauth?state=other&code=c",
+                "yahadesk://oauth?state=\(state)&code=c&code=d",
+                "yahadesk://oauth?state=\(state)&error=access_denied",
+                "yahadesk://oauth?state=\(state)&code=c&errno=10200",
+                "yahadesk://oauth?state=\(state)&code=c#code=d",
+                "yahadesk://evil?state=\(state)&code=c",
+                "yahadesk://oauth/other?state=\(state)&code=c"] {
         #expect(PanLogin.navigation(url(raw), state: state) == .reject, "\(raw)")
     }
-    for raw in ["com.evil.desk:/baidu-pan/oauth?state=\(state)&code=c", "https://pan.baidu.com/union/oauth/authorize?client_id=x"] {
+    for raw in ["com.evil.desk://oauth?state=\(state)&code=c", "https://pan.baidu.com/union/oauth/authorize?client_id=x"] {
         #expect(PanLogin.navigation(url(raw), state: state) == .allow, "\(raw)")
     }
 
     let authorization = URLComponents(url: PanLogin.authorizeURL(state: state), resolvingAgainstBaseURL: false)!
     #expect(authorization.host == "pan.baidu.com" && authorization.path == "/union/oauth/authorize")
     let query = Dictionary(uniqueKeysWithValues: authorization.queryItems!.map { ($0.name, $0.value ?? "") })
-    #expect(query == ["client_id": PanLogin.appKey, "redirect_uri": "com.yaha.desk:/baidu-pan/oauth", "scope": "nd_open_read,nd_open_write",
+    #expect(query == ["client_id": PanLogin.appKey, "redirect_uri": "yahadesk://oauth", "scope": "nd_open_read,nd_open_write",
                       "state": state])
 }
 

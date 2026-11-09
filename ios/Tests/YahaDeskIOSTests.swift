@@ -11,7 +11,7 @@ final class YahaDeskIOSTests: XCTestCase {
     }
 
     func testPanLoginStopsAtTheCallbackWithMatchingState() {
-        let callback = "com.yaha.desk:/baidu-pan/oauth"
+        let callback = "yahadesk://oauth"
         XCTAssertEqual(PanLogin.navigation(URL(string: callback + "?code=c&state=ok")!, state: "ok"), .code("c"))
         XCTAssertEqual(PanLogin.navigation(URL(string: callback + "?code=c&state=wrong")!, state: "ok"), .reject)
         XCTAssertEqual(PanLogin.navigation(URL(string: "https://pan.baidu.com/union/oauth/authorize?x=1")!, state: "ok"), .allow)

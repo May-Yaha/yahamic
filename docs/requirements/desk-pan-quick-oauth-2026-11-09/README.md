@@ -15,18 +15,19 @@
 
 | 地址 | 用途 |
 | --- | --- |
-| `com.yaha.desk:/baidu-pan/oauth` | Yaha Desk Mac/iOS 快速授权（App 与 hub 换取 code 时使用） |
+| `yahadesk://oauth` | Yaha Desk Mac/iOS 快速授权（App 与 hub 换取 code 时使用；0.3.0 起验证可用） |
 | `https://hub.flyaha.top/api/v1/baidu-pan/callback` | hub 门户网页授权 |
-| `yahadesk://oauth` | 历史登记，当前代码不使用 |
+| `com.yaha.desk:/baidu-pan/oauth` | 已登记但百度返回 20030「redirect_uri 与应用配置不匹配」，不使用 |
 | `http://localhost:8902/baidu/oauth` | 本地调试，当前代码不使用 |
 
 改动 App 或 hub 的 `redirect_uri` 前必须先征得用户同意，并同步修改百度控制台与本表。
 
-1. 授权页：`/union/oauth/authorize?client_id&redirect_uri=com.yaha.desk:/baidu-pan/oauth&scope=nd_open_read,nd_open_write&state`。
+1. 授权页：`/union/oauth/authorize?client_id&redirect_uri=yahadesk://oauth&scope=nd_open_read,nd_open_write&state`。
    用户要求不传 `show_dir`，授权页不出现目录选择；App 固定只读写 `/apps/拾见/录音`。
    回调地址由用户在百度控制台登记；换取 code 时 hub 固定传同一地址。
-2. 回调：百度直接跳到 `com.yaha.desk:/baidu-pan/oauth?code&state`，不经过任何网页。
-   - Mac：`ASWebAuthenticationSession` 按 `com.yaha.desk` scheme 截获。
+2. 回调：百度直接跳到 `yahadesk://oauth?code&state`，不经过任何网页。
+   - Mac：`ASWebAuthenticationSession` 按 `yahadesk` scheme 截获；App 也在 Info.plist 注册该 scheme，
+     浏览器经系统打开时由 `application(_:open:)` 交回同一登录会话，state 校验不变。
    - iOS：WKWebView 在跳往回调地址前取消导航。
 3. 换取/续期：`POST /api/v1/baidu-pan/desk/token`，body 为 `{"code"}` 或 `{"refresh_token"}`；
    返回百度 `data` 原样字段。10403 表示 code/refresh_token 已失效，只能重新登录。

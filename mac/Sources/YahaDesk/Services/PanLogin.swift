@@ -15,8 +15,8 @@ import WebKit
 /// Source: https://pan.baidu.com/union/doc/使用入门/接入授权/快速授权/
 enum PanLogin {
     static let appKey = "yausCBE5H5qb1qTFe40KpkP1x6zxXBrd"
-    /// Registered in the Baidu console; Baidu redirects here directly, so the code never passes a web page.
-    static let redirectURI = URL(string: "com.yaha.desk:/baidu-pan/oauth")!
+    /// Registered in the Baidu console (com.yaha.desk:/… is rejected with errno 20030); Baidu redirects here directly.
+    static let redirectURI = URL(string: "yahadesk://oauth")!
     static let tokenURL = URL(string: "https://hub.flyaha.top/api/v1/baidu-pan/desk/token")!
     static let renewalWindow: TimeInterval = 7 * 86_400
 
@@ -37,10 +37,10 @@ enum PanLogin {
         return c.url!
     }
 
-    /// Baidu returns `com.yaha.desk:/baidu-pan/oauth?code=…&state=…`; anything else at that address is a rejection.
+    /// Baidu returns `yahadesk://oauth?code=…&state=…`; anything else at that address is a rejection.
     static func navigation(_ url: URL, state: String) -> Navigation {
         guard url.scheme == redirectURI.scheme else { return .allow }
-        guard url.host == nil, url.path == redirectURI.path, url.fragment == nil else { return .reject }
+        guard url.host == redirectURI.host, url.path == redirectURI.path, url.fragment == nil else { return .reject }
         return code(url.query.flatMap(fields), state: state).map(Navigation.code) ?? .reject
     }
 
@@ -197,6 +197,13 @@ final class PanLoginWindow: NSObject, ASWebAuthenticationPresentationContextProv
             Task { @MainActor in login.finish(.failure(CancellationError())) }
         }
         return try await PanLogin.exchange(code: code)
+    }
+
+    /// Some browsers launch the Baidu 302 to `yahadesk://` through Launch Services instead of handing it to the
+    /// session; the app's registered scheme lands here. The state check in `received` still applies.
+    static func open(_ url: URL) {
+        guard url.scheme == PanLogin.redirectURI.scheme else { return }
+        current?.received(url, error: nil)
     }
 
     private func show() {

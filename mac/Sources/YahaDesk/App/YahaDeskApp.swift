@@ -46,4 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         HomeModel.shared.shutdown()
     }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        urls.forEach { url in MainActor.assumeIsolated { PanLoginWindow.open(url) } }
+    }
 }
