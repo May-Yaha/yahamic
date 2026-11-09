@@ -43,6 +43,10 @@ final class HomeModel: ObservableObject {
             localSTTSettingChanged()
         }
     }
+    /// 松开后先停在浮层里等人改、回车才插入;关闭时说完直接插入。
+    @Published var dictationConfirm: Bool {
+        didSet { defaults.set(dictationConfirm, forKey: "dictationConfirm") }
+    }
     /// 按住讲话的键。HHKB 的 Fn 不上报 macOS,改选一颗修饰键。
     @Published var talkKey: TalkKey {
         didSet {
@@ -111,6 +115,7 @@ final class HomeModel: ObservableObject {
         let storedLocalSTT = defaults.object(forKey: "localSTT") as? Bool ?? true
         pttEnabled = storedLocalSTT || storedPTT
         localSTTEnabled = storedLocalSTT
+        dictationConfirm = defaults.bool(forKey: "dictationConfirm")
         if storedLocalSTT, !storedPTT { defaults.set(true, forKey: "ptt") }
         outputDeviceName = defaults.string(forKey: "outputDevice") ?? "BlackHole"
         talkKey = defaults.string(forKey: "talkKey").flatMap(TalkKey.init(rawValue:)) ?? .fn

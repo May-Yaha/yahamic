@@ -13,20 +13,16 @@ final class TalkOverlay: ObservableObject {
     static let barCount = 9
     static let holdDelay: TimeInterval = 1  // 按住不到 1 秒当误触:浮层不出现,也不转文字
     static let size = NSSize(width: 440, height: 150)
-    nonisolated static let autoInsert: TimeInterval = 1.5  // 松开后不动键盘鼠标,这么久后自动插入
     @Published private(set) var phase = Phase.hidden
     @Published private(set) var levels = [Double](repeating: 0, count: barCount)  // 0..1,最新在右
     @Published private(set) var startedAt = Date()
     @Published var text = ""  // 讲话时是实时字幕,松开后是可改的定稿
-    @Published private(set) var editing = false  // 修改阶段碰过键盘或鼠标:不再自动插入
 
     private var keyDown = false
     private var panel: OverlayPanel?
     private var hideWork: DispatchWorkItem?
     private var showWork: DispatchWorkItem?
     private var decision: CheckedContinuation<String?, Never>?
-    private var autoWork: DispatchWorkItem?
-    private var monitor: Any?
 
     /// 讲话键按下/松开(FnListener 回调)。按下时按设备状态选阶段:离线 / 等开麦 / 送声。
     func setKey(_ down: Bool, online: Bool, muted: Bool) {
@@ -68,28 +64,15 @@ final class TalkOverlay: ObservableObject {
         scheduleHide(after: 0.6)
     }
 
-    /// 松开后展示定稿:不动就在 autoInsert 秒后返回原文;动了键盘鼠标就等回车(返回改过的文字)或 Esc(nil)。
-    func review(_ draft: String, autoInsertAfter delay: TimeInterval = autoInsert) async -> String? {
+    /// 松开后展示定稿等人确认:回车返回(可能改过的)文字,Esc 返回 nil。
+    func review(_ draft: String) async -> String? {
         resolve(nil)
         hideWork?.cancel()
         showWork?.cancel()
         text = draft
-        editing = false
         phase = .review
         show()
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { [weak self] event in
-            self?.beginEditing()
-            return event
-        }
-        let work = DispatchWorkItem { [weak self] in self?.confirm() }
-        autoWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
         return await withCheckedContinuation { decision = $0 }
-    }
-
-    func beginEditing() {
-        autoWork?.cancel()
-        editing = true
     }
 
     func confirm() { resolve(text) }
@@ -98,9 +81,6 @@ final class TalkOverlay: ObservableObject {
     private func resolve(_ result: String?) {
         guard let decision else { return }
         self.decision = nil
-        autoWork?.cancel()
-        if let monitor { NSEvent.removeMonitor(monitor) }
-        monitor = nil
         panel?.keyable = false
         panel?.ignoresMouseEvents = true
         phase = .hidden
@@ -240,62 +220,65 @@ private struct TalkOverlayView: View {
     }
 }
 
-/// 实时字幕:每次刷新只让新出现或被改写的字浮现(由虚变实、由模糊到清晰、轻微上移),已有的字不动。
+/// 实时字幕:模型每轮一次吐出一截字,这里按匀速打字把新增的字逐个显出来(前沿两个字渐隐过渡),
+/// 不跟着整截跳出。模型改写已显示的字时直接换字,不重放动画,免得整行闪。
 private struct CaptionText: View {
     let text: String
     @State private var shown = ""
-    @State private var fresh = 0  // 末尾正在浮现的字数
-    @State private var progress = 1.0
+    @State private var revealed = 0.0  // 已显出的字数,动画中是小数
 
     var body: some View {
         Text(shown)
             .font(.callout)
             .lineLimit(3)
             .truncationMode(.head)  // 长句只看最新的部分
-            .textRenderer(FreshGlyphs(fresh: fresh, progress: progress))
+            .textRenderer(TypingReveal(count: shown.count, revealed: revealed))
             .onAppear { update(text) }
             .onChange(of: text) { _, new in update(new) }
     }
 
     private func update(_ new: String) {
-        let kept = zip(shown, new).prefix { $0 == $1 }.count
         shown = new
-        fresh = new.count - kept
-        progress = 0
-        withAnimation(.easeOut(duration: 0.35)) { progress = 1 }
+        let target = Double(new.count)
+        guard target > revealed else {
+            revealed = target  // 字变少:模型收回了尾巴,直接跟上
+            return
+        }
+        // 约 25 字/秒,一截太长时压到 0.6 秒内打完,别落后于下一轮字幕。
+        let duration = min(0.6, max(0.12, (target - revealed) * 0.04))
+        withAnimation(.linear(duration: duration)) { revealed = target }
     }
 }
 
-/// 按字形从末尾数:截掉开头(truncationMode .head)也不影响哪些字是新的。
-private struct FreshGlyphs: TextRenderer, Animatable {
-    var fresh: Int
-    var progress: Double
+/// 按字形从末尾数:截掉开头(truncationMode .head)也不影响哪些字还没显出。
+private struct TypingReveal: TextRenderer, Animatable {
+    var count: Int
+    var revealed: Double
     var animatableData: Double {
-        get { progress }
-        set { progress = newValue }
+        get { revealed }
+        set { revealed = newValue }
     }
 
     func draw(layout: Text.Layout, in ctx: inout GraphicsContext) {
-        let glyphs = layout.flatMap { $0 }.flatMap { $0 }
-        let first = glyphs.count - fresh
+        let pending = Double(count) - revealed  // 末尾还没显出的字数
+        let glyphs = Array(layout.flatMap { $0 }.flatMap { $0 })
         for (i, glyph) in glyphs.enumerated() {
-            guard i >= first, progress < 1 else {
+            let fromEnd = Double(glyphs.count - 1 - i)
+            let opacity = min(1, max(0, (fromEnd - pending + 2) / 2))
+            guard opacity < 1 else {
                 ctx.draw(glyph)
                 continue
             }
-            // 越靠后的字起步越晚,连起来像一个个打出来。
-            let stagger = fresh > 1 ? Double(i - first) / Double(fresh) * 0.5 : 0
-            let p = min(1, max(0, (progress - stagger) / (1 - stagger)))
+            guard opacity > 0 else { continue }
             var g = ctx
-            g.opacity = p
-            g.addFilter(.blur(radius: (1 - p) * 4))
-            g.translateBy(x: 0, y: (1 - p) * 5)
+            g.opacity = opacity
+            g.addFilter(.blur(radius: (1 - opacity) * 1.5))
             g.draw(glyph)
         }
     }
 }
 
-/// 松开后的定稿:不动就自动插入;碰了键盘就停下,改完回车插入,Esc 放弃。
+/// 松开后的定稿:改完回车插入,Esc 放弃。
 private struct ReviewCard: View {
     @ObservedObject var overlay: TalkOverlay
     @FocusState private var focused: Bool
@@ -310,7 +293,7 @@ private struct ReviewCard: View {
                 .onSubmit { overlay.confirm() }
                 .onExitCommand { overlay.cancel() }
             HStack {
-                Text(overlay.editing ? "回车插入 · Esc 取消" : "即将插入 · 按任意键修改")
+                Text("回车插入 · Esc 取消")
                     .font(.caption2).foregroundStyle(.secondary)
                 Spacer()
                 Button("取消") { overlay.cancel() }.controlSize(.small)

@@ -70,6 +70,12 @@ struct MenuPanelView: View {
             }
             Toggle("本地转文字", isOn: $model.localSTTEnabled)
                 .toggleStyle(TileToggleStyle(symbol: "text.bubble.fill", detail: model.localSTTState.detail))
+            if model.localSTTEnabled {
+                Toggle("插入前确认", isOn: $model.dictationConfirm)
+                    .toggleStyle(TileToggleStyle(
+                        symbol: "checkmark.bubble.fill",
+                        detail: model.dictationConfirm ? "改完回车插入，Esc 取消" : "说完直接插入"))
+            }
             if model.pttEnabled {
                 HStack(spacing: PanelSpacing.row) {
                     CircleIcon(symbol: "keyboard", tint: .accentColor)

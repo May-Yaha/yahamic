@@ -138,9 +138,13 @@ extension HomeModel {
                 if draft.isEmpty {
                     log("⚠️ 本地转文字:没有识别出文字")
                     overlay.finishTranscribing()
+                } else if !dictationConfirm {
+                    overlay.showPartial(draft)  // 定稿替换最后一轮字幕,浮层随即收起
+                    commitDictation(draft, to: utterance.target, take: take)
+                    overlay.finishTranscribing()
                 } else {
                     localSTTState = .reviewing
-                    // 不动就自动插入;动了键盘或鼠标就停下等人改,改过的文字随录音存档作微调标注。
+                    // 停在浮层等人改,回车才插入;改过的文字随录音存档作微调标注。
                     guard let final = await overlay.review(draft) else {
                         log("本地转文字:已取消,未写入")
                         if localSTTEnabled { localSTTState = .ready }

@@ -107,27 +107,24 @@ struct LocalDictationTests {
         #expect(LiveTranscript.join("今天", "下午") == "今天下午")
     }
 
-    @Test func reviewAutoInsertsUntouchedTextAndWaitsOnceEdited() async {
+    @Test func reviewWaitsForConfirmAndReturnsTheEditedText() async {
         let overlay = TalkOverlay()
-        #expect(await overlay.review("swift test", autoInsertAfter: 0.05) == "swift test")
-
-        async let edited = overlay.review("swift test", autoInsertAfter: 0.05)
+        async let edited = overlay.review("swift test")
         await waitForReview(overlay)
-        overlay.beginEditing()
         overlay.text = "swift test 通过"
-        try? await Task.sleep(for: .milliseconds(150))  // past the auto-insert deadline
+        try? await Task.sleep(for: .milliseconds(100))  // no auto-insert: still waiting
         #expect(overlay.phase == .review)
         overlay.confirm()
         #expect(await edited == "swift test 通过")
 
-        async let cancelled = overlay.review("不要", autoInsertAfter: 10)
+        async let cancelled = overlay.review("不要")
         await waitForReview(overlay)
         overlay.cancel()
         #expect(await cancelled == nil)
 
-        async let stopped = overlay.review("关掉本地转文字", autoInsertAfter: 10)
+        async let stopped = overlay.review("关掉本地转文字")
         await waitForReview(overlay)
-        overlay.finishTranscribing()  // stopLocalSTT 走这里,不能把等待中的修改挂住
+        overlay.finishTranscribing()  // stopLocalSTT 走这里,不能把等待中的确认挂住
         #expect(await stopped == nil)
     }
 
