@@ -55,6 +55,7 @@ extension HomeModel {
             "fnAvailable": fnAvailable,
             "localSTT": localSTTEnabled,
             "localSTTState": localSTTState.detail,
+            "dictationConfirm": dictationConfirm,
             "needsAccessibility": needsAccessibility,
             "launchAtLogin": launchAtLogin,
             "outputDevice": sink?.deviceName ?? "-",

@@ -68,13 +68,14 @@ struct MenuPanelView: View {
                     set: { model.setLaunchAtLogin($0) }))
                     .toggleStyle(TileToggleStyle(symbol: "power"))
             }
-            Toggle("本地转文字", isOn: $model.localSTTEnabled)
-                .toggleStyle(TileToggleStyle(symbol: "text.bubble.fill", detail: model.localSTTState.detail))
-            if model.localSTTEnabled {
-                Toggle("插入前确认", isOn: $model.dictationConfirm)
+            HStack(spacing: PanelSpacing.section) {
+                Toggle("本地转文字", isOn: $model.localSTTEnabled)
+                    .toggleStyle(TileToggleStyle(symbol: "text.bubble.fill", detail: model.localSTTState.detail))
+                Toggle("二次确认", isOn: $model.dictationConfirm)
                     .toggleStyle(TileToggleStyle(
                         symbol: "checkmark.bubble.fill",
-                        detail: model.dictationConfirm ? "改完回车插入，Esc 取消" : "说完直接插入"))
+                        detail: model.dictationConfirm ? "改完回车插入" : "说完直接插入"))
+                    .disabled(!model.localSTTEnabled)
             }
             if model.pttEnabled {
                 HStack(spacing: PanelSpacing.row) {
