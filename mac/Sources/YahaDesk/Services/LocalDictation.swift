@@ -10,6 +10,7 @@ enum LocalSTTState: Equatable {
     case ready
     case listening
     case transcribing
+    case reviewing
     case failed(String)
 
     var detail: String {
@@ -20,6 +21,7 @@ enum LocalSTTState: Equatable {
         case .ready: return "按住讲话，松开输入"
         case .listening: return "正在收音"
         case .transcribing: return "正在转文字"
+        case .reviewing: return "可修改,回车插入"
         case .failed(let message): return message
         }
     }
@@ -90,6 +92,52 @@ enum LocalDictationText {
     static func commit(_ text: String, to target: any DictationTextTarget) -> Bool {
         let final = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return !final.isEmpty && target.insert(final)
+    }
+}
+
+/// 实时字幕:前段在停顿处定稿,每轮只重转定稿之后的尾段,刷新耗时不随讲话时长增长。
+/// 16 kHz Int16 单声道,1 秒 = 32 000 字节。
+struct LiveTranscript {
+    static let bytesPerSecond = 32_000
+    static let maxTail = 6 * bytesPerSecond  // 尾段超过 6 秒就找停顿切一刀
+
+    private(set) var committed = ""
+    private(set) var offset = 0  // pcm 中已并入 committed 的字节数
+
+    func tail(of pcm: Data) -> Data { Data(pcm.dropFirst(offset)) }
+
+    /// 尾段过长时返回切点:尾段 3–6 秒里最安静的 100 ms 帧中间。
+    func cut(_ pcm: Data) -> Int? {
+        guard pcm.count - offset >= Self.maxTail else { return nil }
+        let frame = Self.bytesPerSecond / 10
+        var best = (energy: Int.max, at: offset + Self.maxTail)
+        var start = offset + Self.maxTail / 2
+        pcm.withUnsafeBytes { raw in
+            let samples = raw.bindMemory(to: Int16.self)
+            while start + frame <= offset + Self.maxTail {
+                var energy = 0
+                for i in (start / 2)..<((start + frame) / 2) { energy += abs(Int(samples[i])) }
+                if energy < best.energy { best = (energy, start + frame / 2) }
+                start += frame
+            }
+        }
+        return best.at
+    }
+
+    mutating func commit(_ text: String, upTo end: Int) {
+        committed = Self.join(committed, text)
+        offset = end
+    }
+
+    func text(withTail tail: String) -> String { Self.join(committed, tail) }
+
+    /// 中文直接相连;两边都是拉丁字母或数字时补一个空格(swift + test)。
+    static func join(_ a: String, _ b: String) -> String {
+        let a = a.trimmingCharacters(in: .whitespacesAndNewlines)
+        let b = b.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let last = a.unicodeScalars.last, let first = b.unicodeScalars.first else { return a + b }
+        let latin = { (c: Unicode.Scalar) in c.isASCII && CharacterSet.alphanumerics.contains(c) }
+        return latin(last) && latin(first) ? a + " " + b : a + b
     }
 }
 

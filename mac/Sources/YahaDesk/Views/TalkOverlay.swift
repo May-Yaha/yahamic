@@ -4,26 +4,33 @@ import SwiftUI
 // 讲话浮层:按住讲话键满 1 秒后在屏幕底部居中出现的玻璃胶囊,松开 0.3 秒后消失
 // (形态参考 VoiceInk Mini Recorder / Handy overlay)。听写时视线在光标处,
 // 菜单栏面板是收着的,所以开麦与否、实时字幕都在这里看。
-// NSPanel 不激活、不接鼠标:本地转文字要往当前光标处出字,浮层绝不能抢焦点。
+// NSPanel 不激活、不接鼠标:本地转文字要往当前光标处出字。只有松开后的修改阶段临时接键盘
+// (非激活面板成为 key,原 App 仍是前台),插入或放弃后立即交还。
 @MainActor
 final class TalkOverlay: ObservableObject {
-    enum Phase { case hidden, arming, live, offline, transcribing }
+    enum Phase { case hidden, arming, live, offline, transcribing, review }
 
     static let barCount = 9
     static let holdDelay: TimeInterval = 1  // 按住不到 1 秒当误触:浮层不出现,也不转文字
-    static let size = NSSize(width: 440, height: 120)
+    static let size = NSSize(width: 440, height: 150)
+    nonisolated static let autoInsert: TimeInterval = 1.5  // 松开后不动键盘鼠标,这么久后自动插入
     @Published private(set) var phase = Phase.hidden
     @Published private(set) var levels = [Double](repeating: 0, count: barCount)  // 0..1,最新在右
     @Published private(set) var startedAt = Date()
-    @Published private(set) var text = ""  // 实时字幕
+    @Published var text = ""  // 讲话时是实时字幕,松开后是可改的定稿
+    @Published private(set) var editing = false  // 修改阶段碰过键盘或鼠标:不再自动插入
 
     private var keyDown = false
-    private var panel: NSPanel?
+    private var panel: OverlayPanel?
     private var hideWork: DispatchWorkItem?
     private var showWork: DispatchWorkItem?
+    private var decision: CheckedContinuation<String?, Never>?
+    private var autoWork: DispatchWorkItem?
+    private var monitor: Any?
 
     /// 讲话键按下/松开(FnListener 回调)。按下时按设备状态选阶段:离线 / 等开麦 / 送声。
     func setKey(_ down: Bool, online: Bool, muted: Bool) {
+        guard phase != .review else { return }  // 修改中讲话键只管送声,不打断草稿
         if down && !keyDown {
             text = ""
             startedAt = Date()
@@ -56,7 +63,50 @@ final class TalkOverlay: ObservableObject {
         show()
     }
 
-    func finishTranscribing() { scheduleHide(after: 0.6) }
+    func finishTranscribing() {
+        resolve(nil)
+        scheduleHide(after: 0.6)
+    }
+
+    /// 松开后展示定稿:不动就在 autoInsert 秒后返回原文;动了键盘鼠标就等回车(返回改过的文字)或 Esc(nil)。
+    func review(_ draft: String, autoInsertAfter delay: TimeInterval = autoInsert) async -> String? {
+        resolve(nil)
+        hideWork?.cancel()
+        showWork?.cancel()
+        text = draft
+        editing = false
+        phase = .review
+        show()
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { [weak self] event in
+            self?.beginEditing()
+            return event
+        }
+        let work = DispatchWorkItem { [weak self] in self?.confirm() }
+        autoWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        return await withCheckedContinuation { decision = $0 }
+    }
+
+    func beginEditing() {
+        autoWork?.cancel()
+        editing = true
+    }
+
+    func confirm() { resolve(text) }
+    func cancel() { resolve(nil) }
+
+    private func resolve(_ result: String?) {
+        guard let decision else { return }
+        self.decision = nil
+        autoWork?.cancel()
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        panel?.keyable = false
+        panel?.ignoresMouseEvents = true
+        phase = .hidden
+        panel?.orderOut(nil)
+        decision.resume(returning: result)
+    }
 
     /// 讲话中的实时字幕;松开后的定稿也经这里替换最后一轮字幕。
     func showPartial(_ partial: String) {
@@ -91,11 +141,19 @@ final class TalkOverlay: ObservableObject {
             let area = screen.visibleFrame
             panel.setFrameOrigin(NSPoint(x: area.midX - size.width / 2, y: area.minY + 40))
         }
-        panel.orderFrontRegardless()
+        let reviewing = phase == .review
+        panel.keyable = reviewing
+        panel.ignoresMouseEvents = !reviewing
+        guard reviewing else { return panel.orderFrontRegardless() }
+        panel.makeKeyAndOrderFront(nil)
+        // macOS 聚焦输入框会全选,一敲字就把整句替换掉;光标挪到末尾。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            (panel.firstResponder as? NSTextView)?.moveToEndOfDocument(nil)
+        }
     }
 
-    private func makePanel(size: NSSize) -> NSPanel {
-        let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
+    private func makePanel(size: NSSize) -> OverlayPanel {
+        let panel = OverlayPanel(contentRect: NSRect(origin: .zero, size: size),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
@@ -108,13 +166,21 @@ final class TalkOverlay: ObservableObject {
     }
 }
 
+/// 只在修改阶段可成为 key:非激活面板接键盘时,前台 App 不变。
+final class OverlayPanel: NSPanel {
+    var keyable = false
+    override var canBecomeKey: Bool { keyable }
+}
+
 private struct TalkOverlayView: View {
     @ObservedObject var overlay: TalkOverlay
 
     var body: some View {
         VStack(spacing: 8) {
             Spacer(minLength: 0)
-            if !overlay.text.isEmpty, overlay.phase == .live || overlay.phase == .transcribing {
+            if overlay.phase == .review {
+                ReviewCard(overlay: overlay)
+            } else if !overlay.text.isEmpty, overlay.phase == .live || overlay.phase == .transcribing {
                 Text(overlay.text)
                     .font(.callout)
                     .lineLimit(3)
@@ -143,7 +209,7 @@ private struct TalkOverlayView: View {
                 ProgressView().controlSize(.mini)
                 Text("正在转文字").font(.caption2)
                 Spacer(minLength: 0)
-            case .offline, .hidden:
+            case .offline, .hidden, .review:
                 Text("设备未连接").font(.caption2)
                 Spacer(minLength: 0)
             }
@@ -157,7 +223,7 @@ private struct TalkOverlayView: View {
         switch overlay.phase {
         case .live: return .red
         case .offline: return .orange
-        case .transcribing: return .blue
+        case .transcribing, .review: return .blue
         case .arming, .hidden: return .gray
         }
     }
@@ -171,5 +237,34 @@ private struct TalkOverlayView: View {
         }
         .frame(height: 15)
         .animation(.linear(duration: 0.06), value: overlay.levels)
+    }
+}
+
+/// 松开后的定稿:不动就自动插入;碰了键盘就停下,改完回车插入,Esc 放弃。
+private struct ReviewCard: View {
+    @ObservedObject var overlay: TalkOverlay
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("", text: $overlay.text, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.callout)
+                .lineLimit(1...4)
+                .focused($focused)
+                .onSubmit { overlay.confirm() }
+                .onExitCommand { overlay.cancel() }
+            HStack {
+                Text(overlay.editing ? "回车插入 · Esc 取消" : "即将插入 · 按任意键修改")
+                    .font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+                Button("取消") { overlay.cancel() }.controlSize(.small)
+                Button("插入") { overlay.confirm() }.controlSize(.small).buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(12)
+        .frame(width: TalkOverlay.size.width - 20)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .onAppear { focused = true }
     }
 }

@@ -80,6 +80,7 @@ final class HomeModel: ObservableObject {
     var localSTTWorkTask: Task<Void, Never>?
     var localSTTStopTask: Task<Void, Never>?
     var localSTTPreviewTask: Task<Void, Never>?
+    var localSTTLive = LiveTranscript()
     private var fn: FnListener?
     private var fnRetry: Timer?
     private var hardware: AudioHardwareWatcher?  // 设备增减/采样率变化 → 重建出口

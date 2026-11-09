@@ -91,6 +91,46 @@ struct LocalDictationTests {
         #expect(capture.held == .infinity)
     }
 
+    @Test func liveTranscriptCutsLongTailsAtThePauseAndJoinsSegments() {
+        var live = LiveTranscript()
+        let second = LiveTranscript.bytesPerSecond
+        // 6.5 s of loud audio with a silent 100 ms frame at 4.2 s.
+        var samples = [Int16](repeating: 8_000, count: 6 * 16_000 + 8_000)
+        for i in 67_200..<68_800 { samples[i] = 0 }
+        let pcm = samples.withUnsafeBytes { Data($0) }
+        #expect(live.cut(Data(pcm.prefix(5 * second))) == nil)  // short tail: keep re-transcribing it
+        let end = live.cut(pcm)
+        #expect(end == 68_000 * 2)  // middle of the silent frame
+        live.commit("帮我跑一下 swift", upTo: end!)
+        #expect(live.tail(of: pcm).count == pcm.count - end!)
+        #expect(live.text(withTail: "test") == "帮我跑一下 swift test")
+        #expect(LiveTranscript.join("今天", "下午") == "今天下午")
+    }
+
+    @Test func reviewAutoInsertsUntouchedTextAndWaitsOnceEdited() async {
+        let overlay = TalkOverlay()
+        #expect(await overlay.review("swift test", autoInsertAfter: 0.05) == "swift test")
+
+        async let edited = overlay.review("swift test", autoInsertAfter: 0.05)
+        await Task.yield()
+        overlay.beginEditing()
+        overlay.text = "swift test 通过"
+        try? await Task.sleep(for: .milliseconds(150))  // past the auto-insert deadline
+        #expect(overlay.phase == .review)
+        overlay.confirm()
+        #expect(await edited == "swift test 通过")
+
+        async let cancelled = overlay.review("不要", autoInsertAfter: 10)
+        await Task.yield()
+        overlay.cancel()
+        #expect(await cancelled == nil)
+
+        async let stopped = overlay.review("关掉本地转文字", autoInsertAfter: 10)
+        await Task.yield()
+        overlay.finishTranscribing()  // stopLocalSTT 走这里,不能把等待中的修改挂住
+        #expect(await stopped == nil)
+    }
+
     @Test func localDictationAndPushToTalkCannotDiverge() {
         let model = HomeModel.shared
         let savedPTT = model.pttEnabled

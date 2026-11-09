@@ -68,18 +68,25 @@ extension HomeModel {
         startLocalDictationPreview(buffer)
     }
 
-    /// 按住期间约每 0.8 秒把已收到的音频整段重转一次,结果作为浮层实时字幕。
+    /// 按住期间一轮接一轮转写尾段作为浮层实时字幕;尾段过长时在停顿处定稿,见 LiveTranscript。
     private func startLocalDictationPreview(_ buffer: PCMBuffer) {
         localSTTPreviewTask?.cancel()
+        localSTTLive = LiveTranscript()
         localSTTPreviewTask = Task { [weak self] in
-            // ponytail: 每轮重转整段缓冲,长按时总耗时 O(n²);要讲很久时改为停顿处分段提交或 generateStream。
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(800))
+                try? await Task.sleep(for: .milliseconds(150))
                 guard let self, !Task.isCancelled else { return }
                 let pcm = buffer.snapshot()
-                guard pcm.count >= 32_000 else { continue }  // 不到 1 秒没什么可看的
-                guard let partial = try? await localSpeech.transcribe(pcm), !Task.isCancelled else { continue }
-                overlay.showPartial(partial)
+                if let end = localSTTLive.cut(pcm) {
+                    let segment = Data(pcm[localSTTLive.offset..<end])
+                    guard let text = try? await localSpeech.transcribe(segment), !Task.isCancelled else { continue }
+                    localSTTLive.commit(text, upTo: end)
+                    continue
+                }
+                let tail = localSTTLive.tail(of: pcm)
+                guard tail.count >= LiveTranscript.bytesPerSecond / 2 else { continue }
+                guard let text = try? await localSpeech.transcribe(tail), !Task.isCancelled else { continue }
+                overlay.showPartial(localSTTLive.text(withTail: text))
             }
         }
     }
@@ -121,11 +128,30 @@ extension HomeModel {
         localSTTWorkTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let text = try await localSpeech.transcribe(utterance.pcm)
+                // 已定稿的前段沿用,只转剩下的尾段:松开后的等待与讲话时长无关,结果也与字幕一致。
+                let live = localSTTLive
+                let tail = live.tail(of: utterance.pcm)
+                let draft = tail.count < 6_400 && !live.committed.isEmpty
+                    ? live.committed
+                    : live.text(withTail: try await localSpeech.transcribe(tail))
                 guard !Task.isCancelled, localSTTEnabled else { return }
-                overlay.showPartial(text)  // 定稿替换最后一轮字幕,浮层随即收起
-                commitDictation(text, to: utterance.target, take: take)
-                overlay.finishTranscribing()
+                if draft.isEmpty {
+                    log("⚠️ 本地转文字:没有识别出文字")
+                    overlay.finishTranscribing()
+                } else {
+                    localSTTState = .reviewing
+                    // 不动就自动插入;动了键盘或鼠标就停下等人改,改过的文字随录音存档作微调标注。
+                    guard let final = await overlay.review(draft) else {
+                        log("本地转文字:已取消,未写入")
+                        if localSTTEnabled { localSTTState = .ready }
+                        localSTTWorkTask = nil
+                        return
+                    }
+                    guard !Task.isCancelled, localSTTEnabled else { return }
+                    if final != draft { log("本地转文字:已人工修改") }
+                    try? await Task.sleep(for: .milliseconds(150))  // 浮层交还键盘后,原窗口重新成为 key
+                    commitDictation(final, to: utterance.target, take: take)
+                }
             } catch {
                 guard !Task.isCancelled, localSTTEnabled else { return }
                 log("⚠️ 本地转文字失败:\(error.localizedDescription)")
