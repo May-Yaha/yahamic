@@ -1,8 +1,10 @@
-# Yaha Desk — ESP32-S3 无线麦克风 + Mac 本地语音输入
+# Yaha Desk — ESP32-S3 蓝牙无线麦克风 + Mac 离线语音输入
+
+**Open-source ESP32-S3 BLE wireless microphone and offline push-to-talk voice typing for macOS, with an iPhone companion app.**
 
 [![CI](https://github.com/May-Yaha/yahamic/actions/workflows/ci.yml/badge.svg)](https://github.com/May-Yaha/yahamic/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-ESP32--S3%20%7C%20macOS%2026-lightgrey)
+![Platform](https://img.shields.io/badge/platform-ESP32--S3%20%7C%20macOS%2026%20%7C%20iOS%2026-lightgrey)
 ![Swift](https://img.shields.io/badge/Swift-6.2-orange)
 ![ESP-IDF](https://img.shields.io/badge/ESP--IDF-6.1-red)
 
@@ -12,12 +14,15 @@ OpenAI-compatible API. Hold a key, speak, release: the text lands in the focused
 terminals, WeChat, Electron/Flutter apps). The board streams 16 kHz Opus over BLE GATT; the Mac exposes it as a
 system microphone through BlackHole, so Zoom, FaceTime and QuickTime can use it too. When idle, the 480×480 AMOLED
 touch screen is a desk dashboard (clock, CPU/memory rings, notifications). Firmware: ESP-IDF 6.1 + LVGL 9;
-Mac: Swift 6.2 / SwiftUI, macOS 26. Docs are mostly in Chinese; English issues and PRs are welcome.
+Mac: Swift 6.2 / SwiftUI, macOS 26. An iPhone app (iOS 26) shows the device status, mutes it remotely and plays back
+recordings. Docs are mostly in Chinese; English issues and PRs are welcome.
 
 **中文.** 一块约 ¥250 的乐鑫 ESP32-S3 开发板,刷上固件就是 Mac 的**蓝牙无线麦克风**;配套菜单栏 App 提供
 **按住说话、松开出字**的本地语音输入(Qwen3-ASR + MLX,离线可用)和可选的 **AI 润色**(任意 OpenAI 兼容接口)。
+文字直接写进任意 App 的光标处,可以当 Mac 的离线听写、语音输入法用;也能当系统麦克风给 Zoom、FaceTime、QuickTime 用。
+配套 iPhone App 查看设备状态、远程静音、回放录音。
 
-## 演示
+## 演示 / Demo
 
 [![Yaha Desk 0.5.1 演示视频(60 秒)](docs/media/yahadesk-promo-poster.jpg)](docs/media/yahadesk-promo.mp4)
 
@@ -25,7 +30,9 @@ Mac: Swift 6.2 / SwiftUI, macOS 26. Docs are mostly in Chinese; English issues a
 按住 Fn 说话、文字落在光标处,声音经加密蓝牙进 Mac,本地转文字与 AI 润色,iPhone 远程静音,设备屏通知,硬件静音。
 画面按 0.5.1 的固件、Mac、iOS 界面重绘,通知文案与 Wi-Fi 名为示例。
 
-## 亮点
+**目录**:[亮点](#亮点--features) · [硬件清单](#硬件清单--hardware) · [快速开始](#快速开始--quick-start) · [协议](#协议-v3设备--macble-gatt) · [安全模型](#安全模型) · [使用速查](#使用速查) · [故障排查](#故障排查--troubleshooting) · [参与贡献](#参与贡献)
+
+## 亮点 / Features
 
 - **硬件静音**:板上按键一按,一比特音频都不会离开设备;BLE 全程 LE Secure Connections + MITM 配对。
 - **本地语音转文字**:Qwen3-ASR 0.6B 在 Apple Silicon 上实时出字幕,停顿处定稿,不上传语音。
@@ -33,6 +40,7 @@ Mac: Swift 6.2 / SwiftUI, macOS 26. Docs are mostly in Chinese; English issues a
 - **AI 润色(可选)**:去口头语、修标点,默认智谱 GLM,可换任意 OpenAI 兼容接口或本机模型服务。
 - **系统麦克风**:经 BlackHole 虚拟声卡,会议、录音软件都能直接选它。
 - **桌面工作台**:480×480 AMOLED 触摸屏显示时钟、Mac 负载、通知卡片。
+- **iPhone App**:看设备在线与静音状态、远程静音、发送卡片,录音按天分组回放。
 - **可测试**:BLE 协议纯逻辑单测、固件 host 测试、本机控制接口自带端到端压测。
 
 ## 欢迎参与
@@ -45,8 +53,11 @@ Mac: Swift 6.2 / SwiftUI, macOS 26. Docs are mostly in Chinese; English issues a
 - **音质**:24 kHz 档、降噪、回声消除。
 - **文档**:英文文档、上手视频、外壳与 3D 打印。
 
-关键词:ESP32 microphone, ESP32-S3 BLE audio, wireless mic for Mac, macOS dictation, push-to-talk,
-speech-to-text, voice typing, Qwen3-ASR, MLX, Opus, BlackHole, LVGL, ESP-IDF, SwiftUI menu bar app。
+关键词:ESP32 microphone, ESP32-S3 BLE audio, Bluetooth microphone, wireless mic for Mac, macOS dictation,
+offline speech-to-text, voice typing, voice input, push-to-talk, Qwen3-ASR, MLX, Apple Silicon,
+Opus, BlackHole virtual microphone, LVGL, ESP-IDF, AMOLED, SwiftUI menu bar app, iOS companion app。
+ESP32 麦克风、蓝牙麦克风、无线麦克风、Mac 语音输入、离线语音转文字、语音听写、按住说话、语音输入法、
+本地 ASR、AI 润色、虚拟麦克风、桌面屏、开源硬件。
 
 ## 项目背景
 
@@ -99,7 +110,7 @@ Yaha Desk 收下解码后写进 BlackHole,系统里看到的麦克风是 BlackHo
 
 需要跨房间使用时可以用 yahamic 仓库的 0.4.0(提交 `8148c98`,协议 v2)。
 
-## 硬件清单
+## 硬件清单 / Hardware
 
 | 物品 | 说明 | 参考价 |
 |---|---|---|
@@ -127,6 +138,7 @@ yahadesk/
 │   │   └── generated/fonts/  # 屏幕中文字体子集(tools/make_fonts.sh 生成)
 │   ├── sdkconfig.defaults / partitions.csv / CMakeLists.txt
 │   └── main/Kconfig.projbuild          # CONFIG_YAHADESK_SELFTEST(台架自检)
+├── ios/                      # iPhone App(SwiftUI,iOS 26):设备状态、远程静音、录音回放
 ├── mac/                      # Yaha Desk 菜单栏 App(Swift 6.2+,macOS 26)
 │   ├── Sources/COpus/        # libopus 的系统库模块
 │   ├── Sources/DeskProtocol/  # 纯逻辑:GATT UUID、audio 分片重组、写入载荷、key value 行(可单测)
@@ -137,7 +149,7 @@ yahadesk/
 └── LICENSES/THIRD_PARTY_NOTICES.md
 ```
 
-## 快速开始
+## 快速开始 / Quick Start
 
 ### 1. Mac 端:Yaha Desk 菜单栏 App
 
@@ -473,7 +485,7 @@ iPhone「Yaha 桌面」2026-11-07 起不再靠蓝牙看状态：设备每次 `de
 - **设备短按按键**:同样的静音开关
 - 屏幕底部:电量与蓝牙信号;配对屏:6 位配对数字
 
-## 故障排查
+## 故障排查 / Troubleshooting
 
 | 症状 | 处置 |
 |---|---|
