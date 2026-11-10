@@ -237,3 +237,14 @@ struct LocalDictationTests {
         #expect(text.count < 40, "短句输出异常膨胀：\(text)")
     }
 }
+
+@Test func aiPolishURLAppendsChatPathAndRejectsPlainHTTP() {
+    #expect(AIPolish.chatURL(AIPolish.defaultEndpoint)?.absoluteString
+        == "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions")
+    #expect(AIPolish.chatURL("https://api.example.com/v1/chat/completions")?.absoluteString
+        == "https://api.example.com/v1/chat/completions")
+    #expect(AIPolish.chatURL(" http://localhost:11434/v1 ")?.absoluteString
+        == "http://localhost:11434/v1/chat/completions")
+    #expect(AIPolish.chatURL("http://api.example.com/v1") == nil)  // Key 不走明文
+    #expect(AIPolish.chatURL("api.example.com/v1") == nil)
+}

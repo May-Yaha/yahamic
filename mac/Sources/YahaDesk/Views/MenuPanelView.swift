@@ -88,7 +88,7 @@ struct MenuPanelView: View {
                     .toggleStyle(TileToggleStyle(
                         symbol: "wand.and.sparkles",
                         detail: !model.aiPolish.hasKey ? "先在设置里填 Key"
-                            : model.aiPolishEnabled ? "智谱 GLM 整理" : "插入原文", color: .orange))
+                            : model.aiPolishEnabled ? "整理后插入" : "插入原文", color: .orange))
                     .disabled(!model.localSTTEnabled || !model.aiPolish.hasKey)
             }
             if model.pttEnabled {

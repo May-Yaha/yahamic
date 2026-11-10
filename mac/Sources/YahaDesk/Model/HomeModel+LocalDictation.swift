@@ -182,9 +182,10 @@ extension HomeModel {
         }
     }
 
-    /// 打开 AI 润色且有 Key 时交给智谱改写;失败或超时退回原文。
+    /// 打开 AI 润色且有 Key 时交给AI 改写;失败或超时退回原文。
     private func polished(_ draft: String) async -> String {
         guard aiPolishEnabled, aiPolish.hasKey else { return draft }
+        overlay.setPolishing()
         do {
             let text = try await aiPolish.polish(draft)
             log("AI 润色:\(draft.count) → \(text.count) 个字符")

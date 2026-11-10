@@ -8,7 +8,7 @@ import SwiftUI
 // (非激活面板成为 key,原 App 仍是前台),插入或放弃后立即交还。
 @MainActor
 final class TalkOverlay: ObservableObject {
-    enum Phase { case hidden, arming, live, offline, transcribing, review }
+    enum Phase { case hidden, arming, live, offline, transcribing, polishing, review }
 
     static let barCount = 9
     static let holdDelay: TimeInterval = 1  // 按住不到 1 秒当误触:浮层不出现,也不转文字
@@ -59,6 +59,12 @@ final class TalkOverlay: ObservableObject {
         show()
     }
 
+    /// 转写完、等 AI 润色:胶囊换成润色动效,字幕框扫光。
+    func setPolishing() {
+        guard phase == .transcribing else { return }
+        phase = .polishing
+    }
+
     func finishTranscribing() {
         resolve(nil)
         scheduleHide(after: 0.6)
@@ -90,7 +96,7 @@ final class TalkOverlay: ObservableObject {
 
     /// 讲话中的实时字幕;松开后的定稿也经这里替换最后一轮字幕。
     func showPartial(_ partial: String) {
-        guard phase == .live || phase == .transcribing else { return }
+        guard phase == .live || phase == .transcribing || phase == .polishing else { return }
         text = partial.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -148,6 +154,22 @@ final class TalkOverlay: ObservableObject {
     }
 }
 
+/// AI 润色时扫过字幕框的一道光,1.2 秒一趟。
+private struct Shimmer: View {
+    @State private var x: CGFloat = -0.5
+
+    var body: some View {
+        GeometryReader { geometry in
+            LinearGradient(colors: [.clear, .orange.opacity(0.3), .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: geometry.size.width * 0.5)
+                .offset(x: x * geometry.size.width)
+                .onAppear { withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) { x = 1 } }
+        }
+        .clipped()
+        .allowsHitTesting(false)
+    }
+}
+
 /// 只在修改阶段可成为 key:非激活面板接键盘时,前台 App 不变。
 final class OverlayPanel: NSPanel {
     var keyable = false
@@ -156,15 +178,17 @@ final class OverlayPanel: NSPanel {
 
 private struct TalkOverlayView: View {
     @ObservedObject var overlay: TalkOverlay
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 8) {
             capsule
             if overlay.phase == .review {
                 ReviewCard(overlay: overlay)
-            } else if !overlay.text.isEmpty, overlay.phase == .live || overlay.phase == .transcribing {
+            } else if !overlay.text.isEmpty, [.live, .transcribing, .polishing].contains(overlay.phase) {
                 CaptionText(text: overlay.text)
                     .padding(.horizontal, 14).padding(.vertical, 8)
+                    .overlay { if overlay.phase == .polishing && !reduceMotion { Shimmer() } }
                     .glassEffect(.regular, in: .rect(cornerRadius: 14))
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
@@ -191,6 +215,11 @@ private struct TalkOverlayView: View {
                 ProgressView().controlSize(.mini)
                 Text("正在转文字").font(.caption2)
                 Spacer(minLength: 0)
+            case .polishing:
+                Image(systemName: "wand.and.sparkles").font(.caption).foregroundStyle(.orange)
+                    .symbolEffect(.variableColor.iterative.reversing)
+                Text("AI 润色中").font(.caption2)
+                Spacer(minLength: 0)
             case .offline, .hidden, .review:
                 Text("设备未连接").font(.caption2)
                 Spacer(minLength: 0)
@@ -204,7 +233,7 @@ private struct TalkOverlayView: View {
     private var dotColor: Color {
         switch overlay.phase {
         case .live: return .red
-        case .offline: return .orange
+        case .offline, .polishing: return .orange
         case .transcribing, .review: return .blue
         case .arming, .hidden: return .gray
         }

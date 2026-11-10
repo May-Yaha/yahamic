@@ -320,27 +320,53 @@ struct DeviceSetupView: View {
     // MARK: AI 润色
 
     private var aiPolishSection: some View {
-        Section {
-            LabeledContent("API Key") {
-                status(aiPolish.hasKey ? "已保存在钥匙串" : "未填写", ok: aiPolish.hasKey)
-            }
-            HStack {
-                SecureField("智谱 API Key", text: $zhipuKey, prompt: Text(aiPolish.hasKey ? "填新的 Key 覆盖" : "粘贴 Key"))
-                Button("保存") {
-                    zhipuMessage = aiPolish.saveKey(zhipuKey) ? nil : "保存失败,请检查 Key"
-                    zhipuKey = ""
+        Group {
+            Section {
+                TextField("接口地址", text: $aiPolish.endpoint, prompt: Text(AIPolish.defaultEndpoint))
+                if !aiPolish.endpoint.isEmpty && AIPolish.chatURL(aiPolish.endpoint) == nil {
+                    warning("地址需以 https:// 开头(本机服务可用 http://localhost)")
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(zhipuKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                if aiPolish.hasKey {
-                    Button("删除", role: .destructive) { aiPolish.deleteKey() }
+                TextField("模型", text: $aiPolish.model, prompt: Text(AIPolish.defaultModel))
+                LabeledContent("API Key") {
+                    status(aiPolish.hasKey ? "已保存在钥匙串" : "未填写", ok: aiPolish.hasKey)
                 }
+                HStack {
+                    SecureField("新 Key", text: $zhipuKey, prompt: Text(aiPolish.hasKey ? "填新的 Key 覆盖" : "粘贴 Key"))
+                    Button("保存") {
+                        zhipuMessage = aiPolish.saveKey(zhipuKey) ? nil : "保存失败,请检查 Key"
+                        zhipuKey = ""
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(zhipuKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    if aiPolish.hasKey {
+                        Button("删除", role: .destructive) { aiPolish.deleteKey() }
+                    }
+                }
+                if let zhipuMessage { warning(zhipuMessage) }
+                if aiPolish.endpoint != AIPolish.defaultEndpoint || aiPolish.model != AIPolish.defaultModel {
+                    Button("恢复智谱 Coding Plan") {
+                        aiPolish.endpoint = AIPolish.defaultEndpoint
+                        aiPolish.model = AIPolish.defaultModel
+                    }
+                    .buttonStyle(.link)
+                }
+            } header: {
+                Text("接口")
+            } footer: {
+                Text("默认是智谱 GLM Coding Plan;也可填任何 OpenAI 兼容的 Chat Completions 接口(base URL 到 /v1 这一级)。Key 只存在本机钥匙串,换接口时记得换 Key。")
             }
-            if let zhipuMessage { warning(zhipuMessage) }
-        } header: {
-            Text("AI 润色（智谱 GLM Coding Plan）")
-        } footer: {
-            Text("在菜单栏打开「AI 润色」后，本地转出的文字会发给智谱 \(AIPolish.model) 去掉口头语、修标点再插入；录音标注仍存原文。Key 只存在本机钥匙串，失败或 10 秒超时插入原文。")
+            Section {
+                TextEditor(text: $aiPolish.prompt)
+                    .font(.body)
+                    .frame(minHeight: 120)
+                if aiPolish.prompt != AIPolish.defaultPrompt {
+                    Button("恢复默认提示词") { aiPolish.prompt = AIPolish.defaultPrompt }.buttonStyle(.link)
+                }
+            } header: {
+                Text("提示词")
+            } footer: {
+                Text("作为 system 消息发送,转写文字作为 user 消息。在菜单栏打开「AI 润色」后,定稿先发到上面的接口再插入;录音标注仍存原文。失败或 10 秒超时插入原文。")
+            }
         }
     }
 
