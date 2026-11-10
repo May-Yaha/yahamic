@@ -18,6 +18,13 @@ enum ActiveInputMethod {
         else { return nil }
         return Unmanaged<CFString>.fromOpaque(raw).takeUnretainedValue() as String
     }
+
+    /// 本机装了豆包输入法(含没加进输入法列表的)。
+    static var doubaoInstalled: Bool {
+        let filter = [kTISPropertyBundleID as String: "com.bytedance.inputmethod.doubaoime"] as CFDictionary
+        let list = TISCreateInputSourceList(filter, true)?.takeRetainedValue() as? [TISInputSource]
+        return !(list ?? []).isEmpty
+    }
 }
 
 enum LocalSTTState: Equatable {

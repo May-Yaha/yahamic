@@ -33,6 +33,7 @@ final class HomeModel: ObservableObject {
         didSet {
             defaults.set(pttEnabled, forKey: "ptt")
             if !pttEnabled, localSTTEnabled { localSTTEnabled = false }
+            if !pttEnabled, doubaoEnabled { doubaoEnabled = false }
             if started { applyPushToTalk() }
         }
     }
@@ -40,9 +41,19 @@ final class HomeModel: ObservableObject {
         didSet {
             defaults.set(localSTTEnabled, forKey: "localSTT")
             if localSTTEnabled, !pttEnabled { pttEnabled = true }
+            if localSTTEnabled, doubaoEnabled { doubaoEnabled = false }
             localSTTSettingChanged()
         }
     }
+    /// 用豆包输入法转文字:讲话键只送声到 BlackHole,由豆包识别上屏;与本地转文字互斥。
+    @Published var doubaoEnabled: Bool {
+        didSet {
+            defaults.set(doubaoEnabled, forKey: "doubao")
+            if doubaoEnabled, localSTTEnabled { localSTTEnabled = false }
+            if doubaoEnabled, !pttEnabled { pttEnabled = true }
+        }
+    }
+    var doubaoInstalled: Bool { ActiveInputMethod.doubaoInstalled }  // 每次读都查,装完不用重启
     /// 松开后先停在浮层里等人改、回车才插入;关闭时说完直接插入。
     @Published var dictationConfirm: Bool {
         didSet { defaults.set(dictationConfirm, forKey: "dictationConfirm") }
@@ -129,8 +140,11 @@ final class HomeModel: ObservableObject {
     private init() {
         let storedPTT = defaults.object(forKey: "ptt") as? Bool ?? true
         let storedLocalSTT = defaults.object(forKey: "localSTT") as? Bool ?? true
-        pttEnabled = storedLocalSTT || storedPTT
-        localSTTEnabled = storedLocalSTT
+        // 卸载了豆包就当关;两个都存着开时以豆包为准(didSet 两边互关,存的值不会同时为真)。
+        let storedDoubao = defaults.bool(forKey: "doubao") && ActiveInputMethod.doubaoInstalled
+        pttEnabled = storedLocalSTT || storedPTT || storedDoubao
+        localSTTEnabled = storedLocalSTT && !storedDoubao
+        doubaoEnabled = storedDoubao
         dictationConfirm = defaults.bool(forKey: "dictationConfirm")
         aiPolishEnabled = defaults.bool(forKey: "aiPolish")
         ownVoiceOnly = defaults.object(forKey: "ownVoiceOnly") as? Bool ?? true

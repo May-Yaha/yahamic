@@ -140,6 +140,31 @@ struct LocalDictationTests {
         for _ in 0..<200 where overlay.phase != .review { try? await Task.sleep(for: .milliseconds(5)) }
     }
 
+    @Test func doubaoAndLocalDictationAreMutuallyExclusive() {
+        let model = HomeModel.shared
+        let saved = (model.pttEnabled, model.localSTTEnabled, model.doubaoEnabled)
+        defer {
+            model.doubaoEnabled = false
+            model.localSTTEnabled = false
+            model.pttEnabled = saved.0
+            model.localSTTEnabled = saved.1
+            model.doubaoEnabled = saved.2
+        }
+
+        model.localSTTEnabled = true
+        model.doubaoEnabled = true
+        #expect(!model.localSTTEnabled)
+        #expect(model.pttEnabled)
+
+        model.localSTTEnabled = true
+        #expect(!model.doubaoEnabled)
+
+        model.localSTTEnabled = false
+        model.doubaoEnabled = true
+        model.pttEnabled = false
+        #expect(!model.doubaoEnabled)
+    }
+
     @Test func localDictationAndPushToTalkCannotDiverge() {
         let model = HomeModel.shared
         let savedPTT = model.pttEnabled

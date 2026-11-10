@@ -39,15 +39,12 @@ extension HomeModel {
     }
 
     func handleTalkKey(_ down: Bool, name: String) {
-        // 豆包输入法有自己的语音输入和浮层:这次只送声(经 BlackHole),不做本机转文字
-        let doubao = down && localSTTEnabled && ActiveInputMethod.isDoubao(ActiveInputMethod.bundleID)
-        if !doubao { overlay.setKey(down, online: mic.isOnline, muted: mic.state.muted) }
-        if doubao {
-            log("当前是豆包输入法:本次不做本机转文字")
-        } else if down {
-            beginLocalDictation()
+        // 豆包模式:豆包有自己的语音浮层和识别,这边只送声(经 BlackHole),不弹浮层、不转文字
+        if doubaoEnabled {
+            if down, !ActiveInputMethod.isDoubao(ActiveInputMethod.bundleID) { log("⚠️ 豆包模式:当前输入法不是豆包,先切到豆包") }
         } else {
-            requestLocalDictationStop()
+            overlay.setKey(down, online: mic.isOnline, muted: mic.state.muted)
+            if down { beginLocalDictation() } else { requestLocalDictationStop() }
         }
         uplink?.sendControl(muted: !down)
         log(down ? "\(name) 按下 → 送声" : "\(name) 松开 → 静音")

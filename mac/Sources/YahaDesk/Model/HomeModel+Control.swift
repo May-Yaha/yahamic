@@ -54,6 +54,7 @@ extension HomeModel {
             "ptt": pttEnabled,
             "fnAvailable": fnAvailable,
             "localSTT": localSTTEnabled,
+            "doubao": doubaoEnabled,
             "localSTTState": localSTTState.detail,
             "dictationConfirm": dictationConfirm,
             "needsAccessibility": needsAccessibility,
