@@ -50,15 +50,17 @@ final class FocusedTextTarget: DictationTextTarget {
               front.processIdentifier != ProcessInfo.processInfo.processIdentifier
         else { return nil }
         // 如流等 Flutter 应用:AX 写选区返回成功、AXValue 也变了,但只改了无障碍树,输入框里没有字;
-        // 一律走粘贴。
-        let element = isFlutter(front) ? nil : focused(in: AXUIElementCreateSystemWide())
+        // Codex 等 Electron 应用同样报写入成功、输入框没字。一律走粘贴。
+        let element = pastesOnly(front) ? nil : focused(in: AXUIElementCreateSystemWide())
         return FocusedTextTarget(element: element, app: front.processIdentifier)
     }
 
-    private static func isFlutter(_ app: NSRunningApplication) -> Bool {
+    /// Flutter 带 FlutterMacOS.framework;Electron 都有 app.asar(Codex 把 Electron Framework 改了名,不能按框架名认)。
+    private static func pastesOnly(_ app: NSRunningApplication) -> Bool {
         guard let bundle = app.bundleURL else { return false }
-        let framework = bundle.appendingPathComponent("Contents/Frameworks/FlutterMacOS.framework")
-        return FileManager.default.fileExists(atPath: framework.path)
+        return ["Contents/Frameworks/FlutterMacOS.framework", "Contents/Resources/app.asar"].contains {
+            FileManager.default.fileExists(atPath: bundle.appendingPathComponent($0).path)
+        }
     }
 
     private static func focused(in root: AXUIElement) -> AXUIElement? {
