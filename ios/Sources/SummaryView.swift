@@ -8,6 +8,7 @@ struct SavedSummary: Codable, Equatable {
 
     // ponytail: 存 UserDefaults,一天一条几 KB;要跨设备同步再改存网盘。
     nonisolated static func key(_ day: Date) -> String {
+        // 键名按 UTC 日期(东八区的 11-10 记成 summary.2026-11-09);存取用同一函数,只要一天一个键。已有数据按这个键存,别改。
         "summary." + day.formatted(.iso8601.year().month().day())
     }
     nonisolated static func load(_ day: Date, defaults: UserDefaults = .standard) -> SavedSummary? {
@@ -100,11 +101,14 @@ struct DaySummarySheet: View {
         for take in takes { await recordings.player.loadText(take) }
         let lines = Self.lines(takes, texts: recordings.player.texts)
         guard !lines.isEmpty else { error = "这一天的录音还没有确认过的文字。"; return }
-        do {
+        // 不挂在 sheet 的生命周期上:生成要几十秒,中途关掉也照样跑完存下,下次打开直接看。
+        let (ai, day) = (ai, day)
+        let job = Task { @MainActor in
             let fresh = SavedSummary(text: try await ai.summarize(lines), takes: lines.count, at: .now)
             fresh.save(day)
-            saved = fresh
-        } catch { self.error = error.localizedDescription }
+            return fresh
+        }
+        do { saved = try await job.value } catch { self.error = error.localizedDescription }
     }
 }
 

@@ -28,7 +28,9 @@ struct RecordingsView: View {
                             HStack {
                                 Text(Calendar.current.isDateInToday(group.day) ? "今天" : group.day.formatted(.dateTime.month().day().weekday()))
                                 Spacer()
-                                Button { summaryDay = group.day } label: { Label("AI 总结", systemImage: "sparkles") }
+                                Button { summaryDay = group.day } label: {
+                                    Label(SavedSummary.load(group.day) == nil ? "AI 总结" : "查看总结", systemImage: "sparkles")
+                                }
                                     .buttonStyle(.borderless).textCase(nil)
                                     .disabled(!group.items.contains { $0.transcript != nil || recordings.player.texts[$0.id] != nil })
                             }
