@@ -142,36 +142,6 @@ struct HomeView: View {
     }
 }
 
-/// 设置式行图标：白色符号放在彩色圆角方块里（同系统设置），禁用时变灰。
-struct BadgeLabelStyle: LabelStyle {
-    let color: Color
-
-    func makeBody(configuration: Configuration) -> some View {
-        Badge(color: color, configuration: configuration)
-    }
-
-    private struct Badge: View {
-        let color: Color
-        let configuration: LabelStyleConfiguration
-        @Environment(\.isEnabled) private var enabled
-
-        var body: some View {
-            Label {
-                configuration.title
-            } icon: {
-                configuration.icon
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background((enabled ? color : .gray).gradient, in: .rect(cornerRadius: 8))
-            }
-        }
-    }
-}
-
-extension LabelStyle where Self == BadgeLabelStyle {
-    static func badge(_ color: Color) -> BadgeLabelStyle { BadgeLabelStyle(color: color) }
-}
-
 /// 底部提示条：只显示最近一条操作结果，空串不占位。
 struct Banner: View {
     let text: String

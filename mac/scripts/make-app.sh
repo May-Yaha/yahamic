@@ -26,7 +26,7 @@ done
 APP_NAME="YahaDesk"          # 路径用 ASCII,显示名用中文
 DISPLAY_NAME="Yaha Desk"
 BUNDLE_ID="com.yaha.desk"
-VERSION="0.4.3"  # 三端同版:Mac/iOS/设备端一致,Mac 侧勿单独升版
+VERSION="0.5.0"  # 三端同版:Mac/iOS/设备端一致,Mac 侧勿单独升版
 BUILD_NUMBER="${BUILD_NUMBER:-$VERSION}"
 BUILD_DIR="build"
 APP="$BUILD_DIR/$APP_NAME.app"

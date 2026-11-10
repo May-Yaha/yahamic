@@ -20,7 +20,7 @@ struct YahaDeskApp: App {
             DeviceSetupView(cloud: model.cloud, recordings: model.recordings, voiceProfile: model.voiceProfile,
                             firmware: model.firmware, aiPolish: model.aiPolish, deviceFirmware: model.mic.state.firmware)
         }
-        .defaultSize(width: 620, height: 480)
+        .defaultSize(width: 780, height: 560)
         .windowResizability(.contentMinSize)
         .defaultLaunchBehavior(.suppressed)
     }

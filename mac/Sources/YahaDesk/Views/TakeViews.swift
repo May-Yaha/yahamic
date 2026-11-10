@@ -1,6 +1,38 @@
 import SwiftUI
 
-// Mac 设置窗口与 iPhone 录音页共用:录音行(带确认过的文字)和底部迷你播放条。
+// Mac 设置窗口与 iPhone 共用:彩色方块行图标、录音行(带确认过的文字)和底部迷你播放条。
+
+/// 设置式行图标：白色符号放在彩色圆角方块里（同系统设置），禁用时变灰。
+struct BadgeLabelStyle: LabelStyle {
+    let color: Color
+    var size: CGFloat = 30
+
+    func makeBody(configuration: Configuration) -> some View {
+        Badge(color: color, size: size, configuration: configuration)
+    }
+
+    private struct Badge: View {
+        let color: Color
+        let size: CGFloat
+        let configuration: LabelStyleConfiguration
+        @Environment(\.isEnabled) private var enabled
+
+        var body: some View {
+            Label {
+                configuration.title
+            } icon: {
+                configuration.icon
+                    .font(.system(size: size * 0.5, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: size, height: size)
+                    .background((enabled ? color : .gray).gradient, in: .rect(cornerRadius: size * 0.27))
+            }
+        }
+    }
+}
+
+extension LabelStyle where Self == BadgeLabelStyle {
+    static func badge(_ color: Color, size: CGFloat = 30) -> BadgeLabelStyle { BadgeLabelStyle(color: color, size: size) }
+}
 
 /// 录音行:点一下播放、再点暂停;随录音保存的听写文字显示在下面,正在播放的那条展开全文。
 struct TakeRow: View {

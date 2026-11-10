@@ -157,7 +157,7 @@ final class YahaDeskIOSTests: XCTestCase {
         calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
         let item = { (id: UInt64, at: TimeInterval) in PanFiles.Take(audio: PanFiles.Item(id: id, path: "/\(id).opus", size: 1, mtime: Date(timeIntervalSince1970: at))) }
         // 1_800_000_000 = 2027-01-15 16:00 +08:00；+9 小时跨到次日 01:00。
-        let groups = RecordingsView.days([item(1, 1_800_000_000), item(2, 1_800_032_400), item(3, 1_800_003_600)], calendar: calendar)
+        let groups = PanFiles.days([item(1, 1_800_000_000), item(2, 1_800_032_400), item(3, 1_800_003_600)], calendar: calendar)
         XCTAssertEqual(groups.map { $0.items.map(\.id) }, [[2], [3, 1]])
     }
 }

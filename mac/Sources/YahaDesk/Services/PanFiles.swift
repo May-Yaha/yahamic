@@ -31,6 +31,13 @@ struct PanFiles: Sendable {
         return items.filter { $0.path.hasSuffix(".opus") }.map { Take(audio: $0, transcript: texts[String($0.path.dropLast(5))]) }
     }
 
+    /// Takes by local day, newest day and newest take first.
+    static func days(_ takes: [Take], calendar: Calendar = .current) -> [(day: Date, items: [Take])] {
+        Dictionary(grouping: takes) { calendar.startOfDay(for: $0.mtime) }
+            .map { (day: $0.key, items: $0.value.sorted { $0.mtime > $1.mtime }) }
+            .sorted { $0.day > $1.day }
+    }
+
     let token: String
     var log: @Sendable (String) -> Void
     var session: URLSession

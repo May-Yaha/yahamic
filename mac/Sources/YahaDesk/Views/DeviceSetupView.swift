@@ -1,7 +1,7 @@
 import SwiftUI
 import DeskProtocol
 
-/// 设备设置窗口:系统设置风格的分组表单(设备 / Wi-Fi / 网盘 / 录音备份 / 工作台)。
+/// 设备设置窗口:系统设置式侧栏(彩色方块图标)+ 右侧分组表单,一页一件事;迷你播放条切页不中断。
 struct DeviceSetupView: View {
     @ObservedObject var cloud: CloudSync
     @ObservedObject var recordings: RecordingBackup
@@ -9,30 +9,91 @@ struct DeviceSetupView: View {
     @ObservedObject var firmware: FirmwareInstaller
     @ObservedObject var aiPolish: AIPolish
     var deviceFirmware: String
+    @State private var pane: Pane? = .device
     @State private var ssid = ""
     @State private var password = ""
     @State private var manualSSID = false
     @State private var confirmingVoiceDelete = false
-    @State private var showAllRecordings = false
     @State private var zhipuKey = ""
     @State private var zhipuMessage: String?
 
-    var body: some View {
-        Form {
-            deviceSection
-            #if !APP_STORE
-            firmwareSection
-            #endif
-            wifiSection
-            panSection
-            recordingSection
-            voiceProfileSection
-            aiPolishSection
-            workbenchSection
+    enum Pane: CaseIterable, Identifiable {
+        case device, firmware, wifi, pan, recordings, voice, aiPolish, workbench
+        var id: Self { self }
+        var title: String {
+            switch self {
+            case .device: "设备"
+            case .firmware: "固件"
+            case .wifi: "Wi-Fi"
+            case .pan: "网盘"
+            case .recordings: "录音"
+            case .voice: "本人声纹"
+            case .aiPolish: "AI 润色"
+            case .workbench: "工作台"
+            }
         }
-        .formStyle(.grouped)
-        .frame(minWidth: 560, minHeight: 480)
-        .safeAreaInset(edge: .bottom) { MiniPlayerBar(player: recordings.player).frame(maxWidth: 520) }
+        var symbol: String {
+            switch self {
+            case .device: "display"
+            case .firmware: "cpu.fill"
+            case .wifi: "wifi"
+            case .pan: "externaldrive.fill"
+            case .recordings: "waveform"
+            case .voice: "person.wave.2.fill"
+            case .aiPolish: "wand.and.sparkles"
+            case .workbench: "rectangle.on.rectangle"
+            }
+        }
+        var color: Color {
+            switch self {
+            case .device: .blue
+            case .firmware: .gray
+            case .wifi: .blue
+            case .pan: .cyan
+            case .recordings: .red
+            case .voice: .purple
+            case .aiPolish: .orange
+            case .workbench: .orange
+            }
+        }
+    }
+
+    private var panes: [Pane] {
+        #if APP_STORE
+        Pane.allCases.filter { $0 != .firmware }
+        #else
+        Pane.allCases
+        #endif
+    }
+
+    var body: some View {
+        NavigationSplitView {
+            List(panes, selection: $pane) { item in
+                Label(item.title, systemImage: item.symbol).labelStyle(.badge(item.color, size: 22)).tag(item)
+            }
+            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
+        } detail: {
+            Form {
+                switch pane ?? .device {
+                case .device: overview; deviceSection
+                #if APP_STORE
+                case .firmware: EmptyView()
+                #else
+                case .firmware: firmwareSection
+                #endif
+                case .wifi: wifiSection
+                case .pan: panSection
+                case .recordings: recordingPane
+                case .voice: voiceProfileSection
+                case .aiPolish: aiPolishSection
+                case .workbench: workbenchSection
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle((pane ?? .device).title)
+            .safeAreaInset(edge: .bottom) { MiniPlayerBar(player: recordings.player).frame(maxWidth: 560) }
+        }
+        .frame(minWidth: 720, minHeight: 480)
         .onDisappear { recordings.player.stop() }  // 关窗即停,不在后台偷偷放
         .task(id: cloud.panLoggedIn) { if cloud.panLoggedIn { await recordings.upload(); await recordings.refresh() } }
         .confirmationDialog("删除本人声纹档案？", isPresented: $confirmingVoiceDelete, titleVisibility: .visible) {
@@ -53,6 +114,37 @@ struct DeviceSetupView: View {
     }
 
     // MARK: 设备
+
+    /// 首屏主角:设备大图标 + 版本,下面一排状态胶囊(形状 + 文字 + 颜色),一眼看出还差哪步。
+    private var overview: some View {
+        Section {
+            HStack(spacing: 16) {
+                Image(systemName: "display").font(.system(size: 30, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 64, height: 64)
+                    .background(Color.blue.gradient, in: .rect(cornerRadius: 16))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Yaha Desk").font(.title2.bold())
+                    Text(deviceFirmware.isEmpty ? "固件版本未知" : "固件 \(deviceFirmware)").foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            HStack(spacing: 8) {
+                chip("蓝牙", ok: cloud.deviceConnected)
+                chip("Wi-Fi", ok: cloud.deviceConnected && cloud.deviceCloudState.wifiConnected)
+                chip("网盘", ok: cloud.panLoggedIn)
+                chip("工作台", ok: cloud.deviceCloudState.authorized)
+            }
+        }
+    }
+
+    private func chip(_ text: String, ok: Bool) -> some View {
+        Label(text, systemImage: ok ? "checkmark.circle.fill" : "circle.dashed")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(ok ? .green : .secondary)
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background((ok ? Color.green : Color.secondary).opacity(0.12), in: .capsule)
+    }
 
     private var deviceSection: some View {
         Section {
@@ -220,8 +312,24 @@ struct DeviceSetupView: View {
 
     // MARK: 录音备份
 
-    private var recordingSection: some View {
+    @ViewBuilder private var recordingPane: some View {
         Section {
+            LabeledContent("网盘备份") {
+                HStack {
+                    if recordings.pending > 0 { Text("\(recordings.pending) 段待上传").foregroundStyle(.orange) }
+                    else { Text("\(recordings.items.count) 条").foregroundStyle(.secondary) }
+                    if recordings.busy { ProgressView().controlSize(.small) }
+                    Button {
+                        Task { await recordings.upload(); await recordings.refresh() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .help("上传待传录音并刷新列表")
+                    .accessibilityLabel("刷新录音列表")
+                    .disabled(recordings.busy || !cloud.panLoggedIn)
+                }
+            }
+            if let message = recordings.message { Text(message).foregroundStyle(.secondary) }
             if recordings.items.isEmpty {
                 ContentUnavailableView {
                     Label(cloud.panLoggedIn ? "还没有已备份的录音" : "未登录网盘", systemImage: "waveform")
@@ -229,34 +337,13 @@ struct DeviceSetupView: View {
                     Text(cloud.panLoggedIn ? "开麦讲话后静音，录音会自动上传" : "登录网盘后显示已备份的录音")
                 }
             }
-            ForEach(showAllRecordings ? recordings.items : Array(recordings.items.prefix(5))) { take in
-                TakeRow(take: take, player: recordings.player, showsDate: true)
-            }
-            if recordings.items.count > 5 {
-                Button(showAllRecordings ? "收起" : "显示全部 \(recordings.items.count) 条") { showAllRecordings.toggle() }
-                    .buttonStyle(.link)
-            }
-            if let message = recordings.message { Text(message).foregroundStyle(.secondary) }
-        } header: {
-            HStack {
-                Text("录音备份")
-                if recordings.pending > 0 {
-                    Text("\(recordings.pending) 段待上传").foregroundStyle(.orange)
-                }
-                Spacer()
-                if recordings.busy { ProgressView().controlSize(.small) }
-                Button {
-                    Task { await recordings.upload(); await recordings.refresh() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.borderless)
-                .help("上传待传录音并刷新列表")
-                .accessibilityLabel("刷新录音列表")
-                .disabled(recordings.busy || !cloud.panLoggedIn)
-            }
         } footer: {
             Text("每次讲话的录音存到网盘兼容目录 /apps/拾见/录音，本地转文字写入的文本以同名 .txt 一起保存并显示在录音下面；点录音播放，最多显示最近 100 条。")
+        }
+        ForEach(PanFiles.days(recordings.items), id: \.day) { group in
+            Section(group.day.formatted(.dateTime.month().day().weekday())) {
+                ForEach(group.items) { take in TakeRow(take: take, player: recordings.player) }
+            }
         }
     }
 

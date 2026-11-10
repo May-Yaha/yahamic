@@ -19,7 +19,7 @@ struct RecordingsView: View {
                 ContentUnavailableView("暂无录音", systemImage: "waveform", description: Text("Mac 上按讲话键说话后会自动备份到网盘。"))
             } else {
                 List {
-                    ForEach(Self.days(recordings.items), id: \.day) { group in
+                    ForEach(PanFiles.days(recordings.items), id: \.day) { group in
                         Section(group.day.formatted(.dateTime.month().day().weekday())) {
                             ForEach(group.items) { take in TakeRow(take: take, player: recordings.player) }
                         }
@@ -36,13 +36,6 @@ struct RecordingsView: View {
                 Banner(text: recordings.message)
             }
         }
-    }
-
-    /// 按本地日期分组，组与组内都新的在前。
-    nonisolated static func days(_ items: [PanFiles.Take], calendar: Calendar = .current) -> [(day: Date, items: [PanFiles.Take])] {
-        Dictionary(grouping: items) { calendar.startOfDay(for: $0.mtime) }
-            .map { (day: $0.key, items: $0.value.sorted { $0.mtime > $1.mtime }) }
-            .sorted { $0.day > $1.day }
     }
 }
 
