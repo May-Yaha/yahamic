@@ -1,9 +1,24 @@
 import AppKit
 import ApplicationServices
+import Carbon
 import Foundation
 import HuggingFace
 import MLX
 import MLXAudioSTT
+
+/// 当前键盘输入法。豆包输入法自带语音输入,用它时本机转文字让路,同一段话不写两遍。
+enum ActiveInputMethod {
+    static func isDoubao(_ bundleID: String?) -> Bool {
+        bundleID?.hasPrefix("com.bytedance.inputmethod.doubaoime") == true
+    }
+
+    static var bundleID: String? {
+        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+              let raw = TISGetInputSourceProperty(source, kTISPropertyBundleID)
+        else { return nil }
+        return Unmanaged<CFString>.fromOpaque(raw).takeUnretainedValue() as String
+    }
+}
 
 enum LocalSTTState: Equatable {
     case disabled

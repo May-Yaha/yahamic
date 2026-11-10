@@ -18,6 +18,13 @@ struct LocalDictationTests {
         }
     }
 
+    @Test func doubaoInputMethodIsDetected() {
+        #expect(ActiveInputMethod.isDoubao("com.bytedance.inputmethod.doubaoime"))
+        #expect(ActiveInputMethod.isDoubao("com.bytedance.inputmethod.doubaoime.pinyin"))
+        #expect(!ActiveInputMethod.isDoubao("com.apple.inputmethod.SCIM"))
+        #expect(!ActiveInputMethod.isDoubao(nil))
+    }
+
     @Test func duplicateKeyEventsProduceOneCompleteUtterance() throws {
         var capture = LocalDictationCapture()
         let target = Target()
