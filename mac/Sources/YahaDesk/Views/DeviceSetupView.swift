@@ -7,12 +7,15 @@ struct DeviceSetupView: View {
     @ObservedObject var recordings: RecordingBackup
     @ObservedObject var voiceProfile: VoiceProfile
     @ObservedObject var firmware: FirmwareInstaller
+    @ObservedObject var aiPolish: AIPolish
     var deviceFirmware: String
     @State private var ssid = ""
     @State private var password = ""
     @State private var manualSSID = false
     @State private var confirmingVoiceDelete = false
     @State private var showAllRecordings = false
+    @State private var zhipuKey = ""
+    @State private var zhipuMessage: String?
 
     var body: some View {
         Form {
@@ -24,6 +27,7 @@ struct DeviceSetupView: View {
             panSection
             recordingSection
             voiceProfileSection
+            aiPolishSection
             workbenchSection
         }
         .formStyle(.grouped)
@@ -310,6 +314,33 @@ struct DeviceSetupView: View {
             Text("本人声纹")
         } footer: {
             Text("五段原始语音和声纹默认只保存在本机；只有点“备份到网盘”才会上传。打开菜单栏“只留本人声音”后，本地转文字和 BlackHole 会去掉不像本人的语段；你和别人同时说话时分不开。")
+        }
+    }
+
+    // MARK: AI 润色
+
+    private var aiPolishSection: some View {
+        Section {
+            LabeledContent("API Key") {
+                status(aiPolish.hasKey ? "已保存在钥匙串" : "未填写", ok: aiPolish.hasKey)
+            }
+            HStack {
+                SecureField("智谱 API Key", text: $zhipuKey, prompt: Text(aiPolish.hasKey ? "填新的 Key 覆盖" : "粘贴 Key"))
+                Button("保存") {
+                    zhipuMessage = aiPolish.saveKey(zhipuKey) ? nil : "保存失败,请检查 Key"
+                    zhipuKey = ""
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(zhipuKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if aiPolish.hasKey {
+                    Button("删除", role: .destructive) { aiPolish.deleteKey() }
+                }
+            }
+            if let zhipuMessage { warning(zhipuMessage) }
+        } header: {
+            Text("AI 润色（智谱 GLM Coding Plan）")
+        } footer: {
+            Text("在菜单栏打开「AI 润色」后，本地转出的文字会发给智谱 \(AIPolish.model) 去掉口头语、修标点再插入；录音标注仍存原文。Key 只存在本机钥匙串，失败或 10 秒超时插入原文。")
         }
     }
 

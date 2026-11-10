@@ -77,12 +77,20 @@ struct MenuPanelView: View {
                         detail: model.dictationConfirm ? "改完回车插入" : "说完直接插入", color: .cyan))
                     .disabled(!model.localSTTEnabled)
             }
-            Toggle("只留本人声音", isOn: $model.ownVoiceOnly)
-                .toggleStyle(TileToggleStyle(
-                    symbol: "person.wave.2.fill",
-                    detail: !model.voiceProfile.ready ? "先在设置里录声纹"
-                        : model.ownVoiceOnly ? "过滤他人语段" : "不过滤", color: .purple))
-                .disabled(!model.voiceProfile.ready)
+            HStack(spacing: PanelSpacing.section) {
+                Toggle("只留本人声音", isOn: $model.ownVoiceOnly)
+                    .toggleStyle(TileToggleStyle(
+                        symbol: "person.wave.2.fill",
+                        detail: !model.voiceProfile.ready ? "先在设置里录声纹"
+                            : model.ownVoiceOnly ? "过滤他人语段" : "不过滤", color: .purple))
+                    .disabled(!model.voiceProfile.ready)
+                Toggle("AI 润色", isOn: $model.aiPolishEnabled)
+                    .toggleStyle(TileToggleStyle(
+                        symbol: "wand.and.sparkles",
+                        detail: !model.aiPolish.hasKey ? "先在设置里填 Key"
+                            : model.aiPolishEnabled ? "智谱 GLM 整理" : "插入原文", color: .orange))
+                    .disabled(!model.localSTTEnabled || !model.aiPolish.hasKey)
+            }
             if model.pttEnabled {
                 HStack(spacing: PanelSpacing.row) {
                     CircleIcon(symbol: "keyboard", tint: .accentColor)

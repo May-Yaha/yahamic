@@ -47,6 +47,10 @@ final class HomeModel: ObservableObject {
     @Published var dictationConfirm: Bool {
         didSet { defaults.set(dictationConfirm, forKey: "dictationConfirm") }
     }
+    /// 定稿先经智谱 GLM 润色再插入;需在设置里填 Key,失败就插原文。
+    @Published var aiPolishEnabled: Bool {
+        didSet { defaults.set(aiPolishEnabled, forKey: "aiPolish") }
+    }
     /// 只留本人声音:有声纹档案时,本地转文字与送往 BlackHole 的音频都去掉不像本人的语段(BlackHole 晚约 0.75 s)。
     @Published var ownVoiceOnly: Bool {
         didSet {
@@ -95,6 +99,7 @@ final class HomeModel: ObservableObject {
     var localSTTOwnVoice: OwnVoiceFilter?
     private var ownVoiceStream: OwnVoiceStream?
     private var voiceProfileWatch: AnyCancellable?
+    private var aiPolishWatch: AnyCancellable?
     private var fn: FnListener?
     private var fnRetry: Timer?
     private var hardware: AudioHardwareWatcher?  // 设备增减/采样率变化 → 重建出口
@@ -118,6 +123,7 @@ final class HomeModel: ObservableObject {
     let recordings = RecordingBackup()
     let voiceProfile = VoiceProfile()
     let firmware = FirmwareInstaller()
+    let aiPolish = AIPolish()
     private var panRenewal: Task<Void, Never>?
 
     private init() {
@@ -126,6 +132,7 @@ final class HomeModel: ObservableObject {
         pttEnabled = storedLocalSTT || storedPTT
         localSTTEnabled = storedLocalSTT
         dictationConfirm = defaults.bool(forKey: "dictationConfirm")
+        aiPolishEnabled = defaults.bool(forKey: "aiPolish")
         ownVoiceOnly = defaults.object(forKey: "ownVoiceOnly") as? Bool ?? true
         if storedLocalSTT, !storedPTT { defaults.set(true, forKey: "ptt") }
         outputDeviceName = defaults.string(forKey: "outputDevice") ?? "BlackHole"
@@ -172,6 +179,9 @@ final class HomeModel: ObservableObject {
             Task { @MainActor in self?.objectWillChange.send(); self?.applyOwnVoice() }
         }
         firmware.log = { [unowned self] in log($0) }
+        aiPolishWatch = aiPolish.$hasKey.sink { [weak self] _ in
+            Task { @MainActor in self?.objectWillChange.send() }  // 菜单里的润色开关跟着 Key 有无启用
+        }
         voiceProfile.capture = { [weak self] seconds in
             guard let self else { throw VoiceProfileError("Yaha Desk 已退出") }
             return try await self.captureVoicePCM(seconds: seconds)

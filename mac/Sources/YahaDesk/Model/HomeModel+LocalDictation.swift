@@ -151,21 +151,26 @@ extension HomeModel {
                     overlay.finishTranscribing()
                 } else if !dictationConfirm {
                     overlay.showPartial(draft)  // 定稿替换最后一轮字幕,浮层随即收起
-                    commitDictation(draft, to: utterance.target, take: take)
+                    let text = await polished(draft)
+                    guard !Task.isCancelled, localSTTEnabled else { return }
+                    commitDictation(text, to: utterance.target, take: take, label: draft)
                     overlay.finishTranscribing()
                 } else {
+                    overlay.showPartial(draft)
+                    let text = await polished(draft)
+                    guard !Task.isCancelled, localSTTEnabled else { return }
                     localSTTState = .reviewing
                     // 停在浮层等人改,回车才插入;改过的文字随录音存档作微调标注。
-                    guard let final = await overlay.review(draft) else {
+                    guard let final = await overlay.review(text) else {
                         log("本地转文字:已取消,未写入")
                         if localSTTEnabled { localSTTState = .ready }
                         localSTTWorkTask = nil
                         return
                     }
                     guard !Task.isCancelled, localSTTEnabled else { return }
-                    if final != draft { log("本地转文字:已人工修改") }
+                    if final != text { log("本地转文字:已人工修改") }
                     try? await Task.sleep(for: .milliseconds(150))  // 浮层交还键盘后,原窗口重新成为 key
-                    commitDictation(final, to: utterance.target, take: take)
+                    commitDictation(final, to: utterance.target, take: take, label: final == text ? draft : final)
                 }
             } catch {
                 guard !Task.isCancelled, localSTTEnabled else { return }
@@ -177,15 +182,29 @@ extension HomeModel {
         }
     }
 
-    /// 写入按键时的输入框,并作为这段录音的 .txt 随录音备份(微调时的标注)。
-    func commitDictation(_ text: String, to target: any DictationTextTarget, take: Date?) {
+    /// 打开 AI 润色且有 Key 时交给智谱改写;失败或超时退回原文。
+    private func polished(_ draft: String) async -> String {
+        guard aiPolishEnabled, aiPolish.hasKey else { return draft }
+        do {
+            let text = try await aiPolish.polish(draft)
+            log("AI 润色:\(draft.count) → \(text.count) 个字符")
+            return text
+        } catch {
+            log("⚠️ \(error.localizedDescription),插入原文")
+            return draft
+        }
+    }
+
+    /// 写入按键时的输入框;label(默认同 text)作为这段录音的 .txt 随录音备份(微调时的标注)。
+    /// AI 润色改掉了口头语,不是逐字转写,所以标注用润色前的原文。
+    func commitDictation(_ text: String, to target: any DictationTextTarget, take: Date?, label: String? = nil) {
         guard LocalDictationText.commit(text, to: target) else {
             log("⚠️ 本地转文字:结果为空或焦点输入框不接受文字")
             return
         }
         let final = text.trimmingCharacters(in: .whitespacesAndNewlines)
         log("本地转文字:已写入 \(final.count) 个字符")
-        if let take { recordings.saveTranscript(final, for: take) }
+        if let take { recordings.saveTranscript((label ?? text).trimmingCharacters(in: .whitespacesAndNewlines), for: take) }
     }
 
     func stopLocalSTT() {

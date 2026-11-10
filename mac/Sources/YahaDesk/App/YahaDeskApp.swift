@@ -18,7 +18,7 @@ struct YahaDeskApp: App {
         .menuBarExtraStyle(.window)
         Window("设备设置", id: "device-setup") {
             DeviceSetupView(cloud: model.cloud, recordings: model.recordings, voiceProfile: model.voiceProfile,
-                            firmware: model.firmware, deviceFirmware: model.mic.state.firmware)
+                            firmware: model.firmware, aiPolish: model.aiPolish, deviceFirmware: model.mic.state.firmware)
         }
         .defaultSize(width: 620, height: 480)
         .windowResizability(.contentMinSize)

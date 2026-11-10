@@ -711,6 +711,7 @@ struct CloudSyncTests {
             voiceProfile: VoiceProfile(folder: FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)),
             firmware: FirmwareInstaller(),
+            aiPolish: AIPolish(),
             deviceFirmware: "0.3.0"
         ), name: "device-setup", width: 620, height: 1_300)
     }
