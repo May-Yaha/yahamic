@@ -10,17 +10,23 @@ permissions:
 
 jobs:
   firmware-host:
-    # 不需要 ESP-IDF 的固件纯逻辑测试;依赖 managed_components 的 cJSON 测试留在本机跑。
+    # 不需要 ESP-IDF 的固件纯逻辑测试。managed_components 不进 Git,cloud_refresh_test 用上游 cJSON 的同一提交
+    # (espressif/cjson 1.7.19~2 的 sbom_cJSON.yml 记的 hash,与本机 managed_components 逐字节一致)。
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: |
+          git init --quiet /tmp/cjson
+          git -C /tmp/cjson fetch --quiet --depth 1 https://github.com/DaveGamble/cJSON b2890c8d76bbb64e710585ebc0a917196b9c67e7
+          git -C /tmp/cjson checkout --quiet FETCH_HEAD
+      - run: |
           c++ -std=c++17 -Wall -Wextra -Werror -I firmware/main firmware/tests/display_test.cpp -o /tmp/display-test
           /tmp/display-test
       - run: |
-          for t in audio_mute_lifecycle_test cloud_refresh_test font_metrics_test uplink_snapshot_test wifi_audio_latency_test; do
+          for t in audio_mute_lifecycle_test font_metrics_test uplink_snapshot_test wifi_audio_latency_test; do
             python3 firmware/tests/$t.py
           done
+          python3 firmware/tests/cloud_refresh_test.py --cjson-dir /tmp/cjson
 
   mac:
     # 需要 macOS 26 + Xcode 26(Swift 6.2)。
