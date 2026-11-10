@@ -35,10 +35,12 @@ extension LabelStyle where Self == BadgeLabelStyle {
 }
 
 /// 录音行:点一下播放、再点暂停;随录音保存的听写文字显示在下面,正在播放的那条展开全文。
+/// 左滑或右键「修改文字」手动改正,覆盖网盘上的 .txt,作为这段录音的标注。
 struct TakeRow: View {
     let take: PanFiles.Take
     @ObservedObject var player: TakePlayer
     var showsDate = false
+    @State private var editing = false
 
     var body: some View {
         let current = player.current?.id == take.id
@@ -74,10 +76,65 @@ struct TakeRow: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .contextMenu { Button("修改文字", systemImage: "pencil") { editing = true } }
+        .swipeActions { Button("改文字", systemImage: "pencil") { editing = true }.tint(.indigo) }
+        .sheet(isPresented: $editing) { TranscriptEditor(take: take, player: player) }
         // ponytail: 每条文字单独下载一次,列表懒加载只取看得见的;条数多了再改成批量 filemetas。
         .task(id: take.id) { await player.loadText(take) }
         .accessibilityLabel((current && player.playing ? "暂停 " : "播放 ")
             + take.mtime.formatted(date: .omitted, time: .shortened) + (player.texts[take.id].map { "，\($0)" } ?? ""))
+    }
+}
+
+/// 改一条录音的文字;保存成功才关闭,失败留在原处显示原因。
+struct TranscriptEditor: View {
+    let take: PanFiles.Take
+    @ObservedObject var player: TakePlayer
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var saving = false
+    @State private var error: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextEditor(text: $text).frame(minHeight: 160)
+                } header: {
+                    Text(take.mtime.formatted(date: .abbreviated, time: .shortened))
+                } footer: {
+                    Text(error ?? "改成实际说的话,保存后替换网盘里这段录音的文字,也是以后微调识别模型的标注。")
+                        .foregroundStyle(error == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
+                }
+            }
+            .navigationTitle("修改文字")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    if saving { ProgressView() } else {
+                        Button("保存") { Task { await save() } }
+                            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                || text == player.texts[take.id])
+                    }
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 360, minHeight: 280)
+        #endif
+        .task {
+            await player.loadText(take)
+            text = player.texts[take.id] ?? ""
+        }
+    }
+
+    private func save() async {
+        saving = true
+        defer { saving = false }
+        do {
+            try await player.saveText(text, for: take)
+            dismiss()
+        } catch { self.error = error.localizedDescription }
     }
 }
 

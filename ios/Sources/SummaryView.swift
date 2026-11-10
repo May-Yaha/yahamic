@@ -1,5 +1,23 @@
 import SwiftUI
 
+/// 生成过的总结按天存在本机,再打开直接显示;要更新点「重新生成」。
+struct SavedSummary: Codable, Equatable {
+    let text: String
+    let takes: Int  // 生成时用了几条有文字的录音
+    let at: Date
+
+    // ponytail: 存 UserDefaults,一天一条几 KB;要跨设备同步再改存网盘。
+    nonisolated static func key(_ day: Date) -> String {
+        "summary." + day.formatted(.iso8601.year().month().day())
+    }
+    nonisolated static func load(_ day: Date, defaults: UserDefaults = .standard) -> SavedSummary? {
+        defaults.data(forKey: key(day)).flatMap { try? JSONDecoder().decode(SavedSummary.self, from: $0) }
+    }
+    nonisolated func save(_ day: Date, defaults: UserDefaults = .standard) {
+        defaults.set(try? JSONEncoder().encode(self), forKey: Self.key(day))
+    }
+}
+
 /// 一天的听写记录交给 AI(默认智谱 GLM)整理成工作总结:做了什么、待办、关键结论,可复制、分享。
 struct DaySummarySheet: View {
     let day: Date
@@ -7,7 +25,8 @@ struct DaySummarySheet: View {
     @EnvironmentObject private var recordings: RecordingStore
     @EnvironmentObject private var ai: AIPolish
     @Environment(\.dismiss) private var dismiss
-    @State private var summary = ""
+    @State private var saved: SavedSummary?
+    private var summary: String { saved?.text ?? "" }
     @State private var error: String?
     @State private var running = false
 
@@ -22,7 +41,7 @@ struct DaySummarySheet: View {
     var body: some View {
         NavigationStack {
             Group {
-                if !ai.hasKey {
+                if !ai.hasKey && saved == nil {
                     ContentUnavailableView {
                         Label("先填写 API Key", systemImage: "key.fill")
                     } description: {
@@ -43,11 +62,15 @@ struct DaySummarySheet: View {
                     } description: { Text(error) } actions: {
                         Button("重试") { Task { await run() } }.buttonStyle(.borderedProminent)
                     }
-                } else {
+                } else if let saved {
                     ScrollView {
-                        Text(summary).textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text(saved.text).textSelection(.enabled)
+                            Text("\(saved.at.formatted(date: .abbreviated, time: .shortened)) 生成 · \(saved.takes) 条录音")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
                     }
                 }
             }
@@ -57,13 +80,17 @@ struct DaySummarySheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("完成") { dismiss() } }
                 if !summary.isEmpty && !running {
                     ToolbarItemGroup(placement: .primaryAction) {
+                        Button { Task { await run() } } label: { Label("重新生成", systemImage: "arrow.clockwise") }
                         Button { UIPasteboard.general.string = summary } label: { Label("复制", systemImage: "doc.on.doc") }
                         ShareLink(item: summary)
                     }
                 }
             }
         }
-        .task(id: ai.hasKey) { if ai.hasKey && summary.isEmpty { await run() } }
+        .task(id: ai.hasKey) {
+            saved = saved ?? SavedSummary.load(day)
+            if ai.hasKey && saved == nil { await run() }  // 只在没存过时自动生成
+        }
     }
 
     private func run() async {
@@ -73,7 +100,11 @@ struct DaySummarySheet: View {
         for take in takes { await recordings.player.loadText(take) }
         let lines = Self.lines(takes, texts: recordings.player.texts)
         guard !lines.isEmpty else { error = "这一天的录音还没有确认过的文字。"; return }
-        do { summary = try await ai.summarize(lines) } catch { self.error = error.localizedDescription }
+        do {
+            let fresh = SavedSummary(text: try await ai.summarize(lines), takes: lines.count, at: .now)
+            fresh.save(day)
+            saved = fresh
+        } catch { self.error = error.localizedDescription }
     }
 }
 

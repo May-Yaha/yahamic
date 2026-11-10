@@ -49,8 +49,9 @@ struct PanFiles: Sendable {
                                              delegateQueue: nil)
     }
 
-    /// Uploads `data` to `path`; a name clash gets renamed (rtype 1). Returns the stored path.
-    func upload(_ data: Data, to path: String, modified: Date) async throws -> String {
+    /// Uploads `data` to `path`; a name clash gets renamed (rtype 1), or replaced (rtype 3) when `overwrite`.
+    /// Returns the stored path.
+    func upload(_ data: Data, to path: String, modified: Date, overwrite: Bool = false) async throws -> String {
         let blocks = stride(from: 0, to: max(data.count, 1), by: Self.blockSize).map {
             data.subdata(in: $0..<min($0 + Self.blockSize, data.count))
         }
@@ -58,7 +59,7 @@ struct PanFiles: Sendable {
         let list = String(data: try JSONSerialization.data(withJSONObject: md5s), encoding: .utf8)!
         let mtime = String(Int(modified.timeIntervalSince1970))
         let file: [String: String] = ["path": path, "size": String(data.count), "isdir": "0", "block_list": list,
-                                      "rtype": "1", "local_ctime": mtime, "local_mtime": mtime]
+                                      "rtype": overwrite ? "3" : "1", "local_ctime": mtime, "local_mtime": mtime]
         let pre = try await call("precreate", "https://pan.baidu.com/rest/2.0/xpan/file", ["method": "precreate"],
                                  form: file.merging(["autoinit": "1"]) { $1 })
         guard let uploadid = pre["uploadid"] as? String, !uploadid.isEmpty else { throw Self.failure(-1, "precreate") }

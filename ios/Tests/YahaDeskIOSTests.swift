@@ -169,6 +169,17 @@ final class YahaDeskIOSTests: XCTestCase {
         XCTAssertTrue(lines[0].hasSuffix(" 开站会"))
         XCTAssertTrue(lines[1].hasSuffix(" 修好登录"))
     }
+
+    /// 总结按本地日期存取,同一天读回同一份,别的日子不串。
+    func testSavedSummaryRoundTripsPerDay() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "summary-test"))
+        defer { defaults.removePersistentDomain(forName: "summary-test") }
+        let day = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 1_800_000_000))
+        let summary = SavedSummary(text: "【今天做了什么】\n• 修好登录", takes: 2, at: Date(timeIntervalSince1970: 1_800_000_100))
+        summary.save(day, defaults: defaults)
+        XCTAssertEqual(SavedSummary.load(day, defaults: defaults), summary)
+        XCTAssertNil(SavedSummary.load(day.addingTimeInterval(86_400), defaults: defaults))
+    }
 }
 
 private extension DeviceCloudState {

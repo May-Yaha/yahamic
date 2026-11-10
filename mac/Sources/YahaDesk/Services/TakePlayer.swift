@@ -93,6 +93,16 @@ final class TakePlayer: ObservableObject {
         }
     }
 
+    /// Hand-corrected text replaces the take's `.txt` on Pan (created when missing): the label used for fine-tuning.
+    func saveText(_ text: String, for take: PanFiles.Take) async throws {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { throw DeskProtocolError("文字不能为空") }
+        guard let token = token() else { throw DeskProtocolError("网盘登录已过期，请重新登录") }
+        let path = take.transcript?.path ?? String(take.path.dropLast(".opus".count)) + ".txt"
+        _ = try await PanFiles(token: token).upload(Data(text.utf8), to: path, modified: take.mtime, overwrite: true)
+        texts[take.id] = text
+    }
+
     private func start(_ item: AVPlayerItem) {
         let player = AVPlayer(playerItem: item)
         self.player = player

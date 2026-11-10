@@ -30,7 +30,7 @@ struct RecordingsView: View {
                                 Spacer()
                                 Button { summaryDay = group.day } label: { Label("AI 总结", systemImage: "sparkles") }
                                     .buttonStyle(.borderless).textCase(nil)
-                                    .disabled(!group.items.contains { $0.transcript != nil })
+                                    .disabled(!group.items.contains { $0.transcript != nil || recordings.player.texts[$0.id] != nil })
                             }
                         }
                     }
