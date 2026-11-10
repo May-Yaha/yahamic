@@ -17,6 +17,14 @@ Mac: Swift 6.2 / SwiftUI, macOS 26. Docs are mostly in Chinese; English issues a
 **中文.** 一块约 ¥250 的乐鑫 ESP32-S3 开发板,刷上固件就是 Mac 的**蓝牙无线麦克风**;配套菜单栏 App 提供
 **按住说话、松开出字**的本地语音输入(Qwen3-ASR + MLX,离线可用)和可选的 **AI 润色**(任意 OpenAI 兼容接口)。
 
+## 演示
+
+[![Yaha Desk 0.5.1 演示视频(60 秒)](docs/media/yahadesk-promo-poster.jpg)](docs/media/yahadesk-promo.mp4)
+
+点图播放 60 秒演示([下载 mp4](https://github.com/May-Yaha/yahamic/raw/main/docs/media/yahadesk-promo.mp4)):
+按住 Fn 说话、文字落在光标处,声音经加密蓝牙进 Mac,本地转文字与 AI 润色,iPhone 远程静音,设备屏通知,硬件静音。
+画面按 0.5.1 的固件、Mac、iOS 界面重绘,通知文案与 Wi-Fi 名为示例。
+
 ## 亮点
 
 - **硬件静音**:板上按键一按,一比特音频都不会离开设备;BLE 全程 LE Secure Connections + MITM 配对。
