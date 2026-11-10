@@ -16,8 +16,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         DEVELOPMENT_TEAM: BB24N2QQD3
         # 商店上传要求内嵌 framework 也带版本号(ITMS-90057),与 App 同版。
-        MARKETING_VERSION: "0.5.0"
-        CURRENT_PROJECT_VERSION: "0.5.0"
+        MARKETING_VERSION: "0.5.1"
+        CURRENT_PROJECT_VERSION: "0.5.1"
   YahaDeskIOS:
     type: application
     platform: iOS
@@ -41,8 +41,8 @@ targets:
         CFBundleDisplayName: Yaha Desk
         CFBundleIdentifier: com.yaha.desk  # 与 Mac 同一 bundle id
         # 必须是字符串:写成数字时 CFNetwork 拼 User-Agent 会崩(首个网络请求即闪退)。
-        CFBundleShortVersionString: "0.5.0"  # 与 Mac、固件同版(make-app.sh 校验)
-        CFBundleVersion: "0.5.0"
+        CFBundleShortVersionString: "0.5.1"  # 与 Mac、固件同版(make-app.sh 校验)
+        CFBundleVersion: "0.5.1"
         UILaunchScreen: {}
         # 折叠屏展开、横放都要能用:放开横屏,宽屏下 TabView 变侧栏。
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
