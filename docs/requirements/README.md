@@ -23,7 +23,7 @@
 - [本地语音转文字](desk-local-stt-2026-11-07/README.md)
 - [多主机配对](desk-multi-host-pairing-2026-11-07/README.md)
 - [个人声音 TSE](desk-personal-voice-tse-2026-11-07/README.md)
-- [商店发布](desk-store-release-2026-11-07/README.md)
+- [商店发布（已废弃）](desk-store-release-2026-11-07/README.md)
 - [Wi-Fi / BLE 共存](desk-wifi-ble-coex-2026-11-07/README.md)
 
 ## 2026-11-06

@@ -8,7 +8,6 @@ firmware/backups/
 
 # Swift
 mac/.build/
-mac/.build-appstore/
 mac/.swiftpm/
 
 # 出厂固件备份(刷机前自动生成,不要提交)

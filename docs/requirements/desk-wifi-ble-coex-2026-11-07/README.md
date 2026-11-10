@@ -2,11 +2,11 @@
 
 ## 目标与授权
 
-用户反馈讲话卡顿、断续、听写重复、背景人声与噪声被识别，要求整体压测，再判断是否需要在 Mac 上加本人声纹过滤和降噪。用户于 2026-11-07 授权改固件并烧录 `yahadesk-222a`。
+用户反馈讲话卡顿、断续、听写重复、背景人声与噪声被识别，要求整体压测，再判断是否需要在 Mac 上加本人声纹过滤和降噪。用户于 2026-11-07 授权改固件并烧录 `yahadesk-XXXX`。
 
 ## 根因
 
-ESP32-S3 的 Wi-Fi 与 BLE 共用一个 2.4 GHz 射频，按时分共存。2026-11-06 为排查听写重复加的 `esp_wifi_set_ps(WIFI_PS_NONE)`（[候选修复](../desk-voice-repeat-2026-11-06/README.md)）让 Wi-Fi 一直占着射频。在家里的 AP 上看不出问题，公司 AP（HUAWEI-H1I9QR，信道 11，HT40）繁忙时 BLE 音频拿不到空口。
+ESP32-S3 的 Wi-Fi 与 BLE 共用一个 2.4 GHz 射频，按时分共存。2026-11-06 为排查听写重复加的 `esp_wifi_set_ps(WIFI_PS_NONE)`（[候选修复](../desk-voice-repeat-2026-11-06/README.md)）让 Wi-Fi 一直占着射频。在家里的 AP 上看不出问题，公司 AP（<家庭 Wi-Fi>，信道 11，HT40）繁忙时 BLE 音频拿不到空口。
 
 同一间办公室、BLE RSSI -41 到 -48 dBm 的对照：
 
@@ -29,7 +29,7 @@ ESP32-S3 的 Wi-Fi 与 BLE 共用一个 2.4 GHz 射频，按时分共存。2026-
 - 主机测试：新代码通过，旧代码失败（`FAIL: WIFI_PS_NONE is not forced`）。
 - `idf.py build`（ESP-IDF 6.1）通过，DIRAM 36.7%。
 - 烧录：bootloader、分区表、应用 SHA 校验通过，未擦 NVS；重启后未重新配对即重连 Mac。
-- 启动日志：`wifi:connected with HUAWEI-H1I9QR … channel 11, 40D`，`wifi:pm start, type: 1`。
+- 启动日志：`wifi:connected with <家庭 Wi-Fi> … channel 11, 40D`，`wifi:pm start, type: 1`。
 - Wi-Fi 已连上时压测：
   - 30 s：接收/解码/入队 500 帧，跳号 0，欠载 0，溢出 0，缓冲最低 115.6 ms、P50 169.2 ms。
   - 120 s：2000/2000 帧，跳号 0，欠载 0，溢出 0，缓冲最低 97.2 ms、P50 173.0 ms。

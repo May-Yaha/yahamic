@@ -39,10 +39,10 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: Yaha Desk
-        CFBundleIdentifier: com.yaha.desk  # 与 Mac 同一 bundle id:App Store 通用购买
+        CFBundleIdentifier: com.yaha.desk  # 与 Mac 同一 bundle id
         # 必须是字符串:写成数字时 CFNetwork 拼 User-Agent 会崩(首个网络请求即闪退)。
         CFBundleShortVersionString: "0.5.0"  # 与 Mac、固件同版(make-app.sh 校验)
-        CFBundleVersion: "0.5.0"  # 重新上传同版本时改为 0.5.0.1 这类更大的值
+        CFBundleVersion: "0.5.0"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSBluetoothAlwaysUsageDescription: Yaha Desk 在切换 Wi-Fi 和设备管理页通过蓝牙给桌面设备切换网络、绑定网盘，不采集音频。

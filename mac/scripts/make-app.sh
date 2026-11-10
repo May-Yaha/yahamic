@@ -1,12 +1,10 @@
 #!/bin/bash
-# 把 Yaha Desk 打包成 .app:构建 → 图标 → Info.plist → 签名。三条渠道同一份代码:
+# 把 Yaha Desk 打包成 .app:构建 → 图标 → Info.plist → 签名。不上 Mac App Store,对外走 GitHub Release:
 #   scripts/make-app.sh [--install]           dev:Apple Development 签名,本机自用(默认)
 #   scripts/make-app.sh --dmg                 内部分发:dev 签名的 .app 装进 dmg(未公证:首次打开被拦后到 系统设置→隐私与安全性 点「仍要打开」)
-#   scripts/make-app.sh devid [--install]     官网分发:Developer ID + hardened runtime + 公证
-#   scripts/make-app.sh appstore              Mac App Store:-DAPP_STORE 沙盒版 + pkg,不上传
+#   scripts/make-app.sh devid [--install]     GitHub Release:Developer ID + hardened runtime + 公证
 # 公证需先由用户自己存好凭据(密码不经 agent):
 #   xcrun notarytool store-credentials yahadesk --apple-id <邮箱> --team-id BB24N2QQD3
-# 商店版需先下载 Mac App Store 描述文件,路径经 PROFILE=... 传入。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -15,13 +13,12 @@ INSTALL=""
 DMG=""
 for arg in "$@"; do
   case "$arg" in
-    dev|devid|appstore) CHANNEL="$arg" ;;
+    dev|devid) CHANNEL="$arg" ;;
     --install) INSTALL=1 ;;
     --dmg) DMG=1 ;;
     *) echo "未知参数:$arg"; exit 2 ;;
   esac
 done
-[ "$CHANNEL" = "appstore" ] && [ -n "$INSTALL" ] && { echo "商店版走 TestFlight 安装,不支持 --install"; exit 2; }
 
 APP_NAME="YahaDesk"          # 路径用 ASCII,显示名用中文
 DISPLAY_NAME="Yaha Desk"
@@ -41,13 +38,8 @@ identity() {  # 钥匙串里第一个匹配前缀的签名身份
 }
 
 echo "▸ 构建 release 二进制($CHANNEL)"
-if [ "$CHANNEL" = "appstore" ]; then
-  SCRATCH=".build-appstore"
-  swift build -c release --product YahaDesk --scratch-path "$SCRATCH" -Xswiftc -DAPP_STORE
-else
-  SCRATCH=".build"
-  swift build -c release --product YahaDesk
-fi
+SCRATCH=".build"
+swift build -c release --product YahaDesk
 # 新版 SwiftPM(swiftbuild 后端)产物在 out/Products 下,.build/release 可能只是符号链接
 BIN=""
 for cand in "$SCRATCH/release/YahaDesk" "$SCRATCH/out/Products/Release/YahaDesk"; do
@@ -115,17 +107,16 @@ for checkout in "$CHECKOUTS"/*; do
 done
 cp ../LICENSES/THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
 
-if [ "$CHANNEL" != "appstore" ]; then  # 一键安装固件;商店版沙盒没有串口权限,不带
-  FW=../firmware/build
-  for f in bootloader/bootloader.bin partition_table/partition-table.bin yahadesk.bin; do
-    [ -s "$FW/$f" ] || { echo "缺固件 $FW/$f:先在 firmware/ 里 idf.py build"; exit 1; }
-  done
-  FW_VER=$(dd if="$FW/yahadesk.bin" bs=1 skip=48 count=32 2>/dev/null | tr -d '\0')  # esp_app_desc.version
-  [ "$FW_VER" = "$VERSION" ] || { echo "固件版本 $FW_VER 与 App $VERSION 不一致:重新 idf.py build"; exit 1; }
-  mkdir -p "$APP/Contents/Resources/Firmware"
-  cp "$FW/bootloader/bootloader.bin" "$FW/partition_table/partition-table.bin" "$FW/yahadesk.bin" \
-    "$APP/Contents/Resources/Firmware/"
-fi
+# 一键安装固件
+FW=../firmware/build
+for f in bootloader/bootloader.bin partition_table/partition-table.bin yahadesk.bin; do
+  [ -s "$FW/$f" ] || { echo "缺固件 $FW/$f:先在 firmware/ 里 idf.py build"; exit 1; }
+done
+FW_VER=$(dd if="$FW/yahadesk.bin" bs=1 skip=48 count=32 2>/dev/null | tr -d '\0')  # esp_app_desc.version
+[ "$FW_VER" = "$VERSION" ] || { echo "固件版本 $FW_VER 与 App $VERSION 不一致:重新 idf.py build"; exit 1; }
+mkdir -p "$APP/Contents/Resources/Firmware"
+cp "$FW/bootloader/bootloader.bin" "$FW/partition_table/partition-table.bin" "$FW/yahadesk.bin" \
+  "$APP/Contents/Resources/Firmware/"
 
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 IFS=. read -r XC_MA XC_MI XC_PA <<< "$(xcodebuild -version | awk 'NR==1{print $2}')"
@@ -184,14 +175,6 @@ case "$CHANNEL" in
     echo "▸ 签名(hardened runtime):$IDENTITY"
     codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
     ;;
-  appstore)
-    IDENTITY=$(identity "Apple Distribution: " "-p codesigning")
-    [ -n "$IDENTITY" ] || { echo "缺 Apple Distribution 证书"; exit 1; }
-    [ -f "${PROFILE:-}" ] || { echo "缺描述文件:PROFILE=<Mac App Store .provisionprofile 路径> $0 appstore"; exit 1; }
-    cp "$PROFILE" "$APP/Contents/embedded.provisionprofile"
-    echo "▸ 签名(沙盒):$IDENTITY"
-    codesign --force --timestamp --entitlements scripts/appstore.entitlements --sign "$IDENTITY" "$APP"
-    ;;
 esac
 codesign --verify --strict "$APP"
 
@@ -208,7 +191,7 @@ if [ "$CHANNEL" = "devid" ]; then
     mv "$ZIP" "${ZIP%.zip}-unnotarized.zip"
     ZIP="${ZIP%.zip}-unnotarized.zip"
   fi
-  echo "✓ 官网分发包:$ZIP"
+  echo "✓ Release 包:$ZIP(发布:gh release create v$VERSION \"$ZIP\",需单独授权)"
 fi
 
 if [ -n "$DMG" ]; then
@@ -220,16 +203,6 @@ if [ -n "$DMG" ]; then
   hdiutil create -quiet -volname "$DISPLAY_NAME $VERSION" -srcfolder "$STAGE" -format UDZO "$DMG_PATH"
   rm -rf "$STAGE"
   echo "✓ 内部分发包:$DMG_PATH"
-fi
-
-if [ "$CHANNEL" = "appstore" ]; then
-  INSTALLER=$(identity "3rd Party Mac Developer Installer: ")
-  [ -n "$INSTALLER" ] || INSTALLER=$(identity "Mac Installer Distribution: ")
-  [ -n "$INSTALLER" ] || { echo "缺 Mac Installer Distribution 证书"; exit 1; }
-  PKG="$BUILD_DIR/$APP_NAME-$VERSION-$BUILD_NUMBER.pkg"
-  productbuild --component "$APP" /Applications --sign "$INSTALLER" "$PKG"
-  echo "✓ 商店包:$PKG(上传:Transporter 或 xcrun altool,需单独授权)"
-  exit 0
 fi
 
 if [ -n "$INSTALL" ]; then

@@ -136,8 +136,8 @@ display JSON boundary tests passed
 
 - 用户已自行执行唯一入口，发布到 `ae45b0730f8037892dd2d5e5fcb4977929b7f95a`。使用带缓存穿透参数的 OAuth 元数据核对 HTTP 200、`desk.configure`，响应头 `x-yahaops-release: yahaops-api-slot-20261103210246-ae45b073`。不带参数的历史缓存不能作为服务未部署的证据。
 - 用户另为现有应用勾选轮播控制权限后，真实 `client_credentials` 请求仅申请 `desk.configure` → HTTP 200，响应权限恰为该单项；随后 `desk_get_display` → HTTP 200、JSON-RPC 成功。此步骤只读，不保存轮播配置、不签发设备授权。真实密钥用 Security API 安装至本机钥匙串，ACL 信任稳定签名的正式 App；不写源码、Git 或分发包，令牌未持久化。
-- Mac 0.2.0 已通过 `bash scripts/make-app.sh --install` 安装至 `/Applications/YahaDesk.app`，签名核对通过，显示器菜单图标已替换，原配对自动恢复到 `yahadesk-222a`。这只是图标版本安装；免填连接和中文预览完成后仍须重装与运行验证。
-- 烧录目标再次核对为 `/dev/cu.usbmodem311201`、基础 MAC `44:bd:8d:79:22:28`（BT 尾号 `222a`），另一块 USB 设备未操作。完整 16MiB Flash 已备份在本机私有目录 `~/Library/Application Support/YahaDesk/firmware-backups/20261103-carousel-0.2.0-pt5vcdkt/flash-before.bin`，目录 0700、文件 0600；SHA-256 `74b2faae547482b77141da8709ee43e0d248214658c6d78dbc7d26faf505f4f8`。备份包含私密配置，不提交。
+- Mac 0.2.0 已通过 `bash scripts/make-app.sh --install` 安装至 `/Applications/YahaDesk.app`，签名核对通过，显示器菜单图标已替换，原配对自动恢复到 `yahadesk-XXXX`。这只是图标版本安装；免填连接和中文预览完成后仍须重装与运行验证。
+- 烧录目标再次核对为 `/dev/cu.usbmodemXXXX`、基础 MAC `xx:xx:xx:xx:xx:xx`（BT 尾号 `XXXX`），另一块 USB 设备未操作。完整 16MiB Flash 已备份在本机私有目录 `~/Library/Application Support/YahaDesk/firmware-backups/20261103-carousel-0.2.0-pt5vcdkt/flash-before.bin`，目录 0700、文件 0600；SHA-256 `74b2faae547482b77141da8709ee43e0d248214658c6d78dbc7d26faf505f4f8`。备份包含私密配置，不提交。
 - 实际分区表与构建产物逐字节一致，只写入 `0x10000` 应用分区，保留 NVS、配对、bootloader 与分区表。第一次烧录 `bf0adf26…` 经 esptool hash 核对，但启动出现 `capture task didn't start` 与 Wi-Fi RX 4/10 分配失败，因此未通过真机验收。
 - 诊断固件 SHA-256 `eee5515d3a0e66cb5c55e488f986b9814ad601a71690b6c5be93ffb922d7967e`。阶段日志 `/tmp/yahaops-desk-carousel-memory-diagnostic.log` 显示显示器初始化后内部 free=105063、largest=31744；音频栈申请前 free=92783、largest=31744，无法满足 32768 字节内部栈。UI 对象创建期间系统堆不变，LVGL 使用固定 64KiB 内部池；不能把像素对象数量当成系统堆碎片根因，也不能把音频栈迁往 PSRAM 掩盖问题。
 - `python3 yahaops-desk/firmware/tests/boot_memory_test.py /tmp/yahaops-desk-carousel-memory-diagnostic.log` 为真实失败回归；修复后须通过音频与 Wi-Fi 启动里程碑，并用 `--require-capture` 验证真实采集间隔。BLE 订阅显示 live 不足以证明采集成功。
@@ -174,13 +174,13 @@ API、固件独立审查通过；Mac 首轮确认 1 项 P2：旧 PKCE 重新授�
 
 ### 2026-11-04 生效核对
 
-- 用户完成 macOS 钥匙串系统许可后，正式 `/Applications/YahaDesk.app` 的本机控制接口返回 `configured=true`、`authenticationMode=client_credentials`、`status=已连接轮播控制`、`desiredRevision=0`；同次只读状态显示版本 `0.2.0`、设备 `yahadesk-222a` 已加密蓝牙连接、静音与 PTT 保持开启。原始脱敏结果见 `evidence/onboarding-runtime-20261104.json`，未保存 token 或 secret。
+- 用户完成 macOS 钥匙串系统许可后，正式 `/Applications/YahaDesk.app` 的本机控制接口返回 `configured=true`、`authenticationMode=client_credentials`、`status=已连接轮播控制`、`desiredRevision=0`；同次只读状态显示版本 `0.2.0`、设备 `yahadesk-XXXX` 已加密蓝牙连接、静音与 PTT 保持开启。原始脱敏结果见 `evidence/onboarding-runtime-20261104.json`，未保存 token 或 secret。
 - OAuth 元数据请求 HTTP 200，响应头 `x-yahaops-release: yahaops-api-slot-20261104092157-26d1c2b8`、`x-cache: MISS`，`desk.configure` 位于支持范围；这证明新增服务版本已切流。Mac 已能读取内置密钥并建立控制模式，未要求用户填写 Client ID/密钥。
 - 设备仍显示 `online=false`（设备云端同步状态）；本轮尚未执行 Wi-Fi 配网、浏览器设备授权或 BLE 下发 refresh token。已请用户在Mac设置中完成配网及浏览器确认，不在聊天索取Wi-Fi密码；不能把蓝牙在线误报为云端同步已生效。
 
 ### 最终固件实际采集与屏幕回传
 
-USB重新枚举为 `/dev/cu.usbmodem311101` 后，先通过 esptool `read-mac` 确认仍为基础MAC `44:bd:8d:79:22:28`，没有操作另一块设备或重新烧录。当前bin SHA-256仍为 `adb959f2…`，内嵌ELF完整摘要 `e08e5e27890c289f9671f8cd920819d22b2c4fdc31b829ab12ce22ea1bd1dde0` 与本地ELF一致，启动日志前缀吻合。
+USB重新枚举为 `/dev/cu.usbmodemXXXX` 后，先通过 esptool `read-mac` 确认仍为基础MAC `xx:xx:xx:xx:xx:xx`，没有操作另一块设备或重新烧录。当前bin SHA-256仍为 `adb959f2…`，内嵌ELF完整摘要 `e08e5e27890c289f9671f8cd920819d22b2c4fdc31b829ab12ce22ea1bd1dde0` 与本地ELF一致，启动日志前缀吻合。
 
 `python3 yahaops-desk/firmware/tests/boot_memory_test.py /tmp/yahaops-desk-runtime-20261104/boot.log --require-capture` → **exit0**：实际RX10、TLS PSRAM和音频任务ready；实际采集 **59/59/60ms**，音频栈最低余量 **6836B**。本次内部最低余量 **21140B**、后段最大连续块 **13312B**，未见启动失败、panic或堆损坏签名。
 

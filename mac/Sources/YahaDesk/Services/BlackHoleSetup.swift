@@ -37,7 +37,6 @@ enum BlackHoleSetup {
         }
     }
 
-    #if !APP_STORE  // 商店版不带管理员安装器:沙盒里跑不了,审核也不收
     /// 下载 → 校验 → 授权安装。全程不经 shell 拼接用户输入:路径是本进程生成的临时路径。
     /// `onVerified` 在校验通过、即将弹管理员授权框时回调(界面切到「安装中」)。
     @MainActor
@@ -90,7 +89,6 @@ enum BlackHoleSetup {
         let stderr = String(decoding: errPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         return (process.terminationStatus, stderr)
     }
-    #endif
 }
 
 /// 安装进度:idle → downloading → installing → waiting(装好,等 CoreAudio 出现设备)。

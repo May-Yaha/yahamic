@@ -58,17 +58,9 @@ struct DeviceSetupView: View {
         }
     }
 
-    private var panes: [Pane] {
-        #if APP_STORE
-        Pane.allCases.filter { $0 != .firmware }
-        #else
-        Pane.allCases
-        #endif
-    }
-
     var body: some View {
         NavigationSplitView {
-            List(panes, selection: $pane) { item in
+            List(Pane.allCases, selection: $pane) { item in
                 Label(item.title, systemImage: item.symbol).labelStyle(.badge(item.color, size: 22)).tag(item)
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
@@ -76,11 +68,7 @@ struct DeviceSetupView: View {
             Form {
                 switch pane ?? .device {
                 case .device: overview; deviceSection
-                #if APP_STORE
-                case .firmware: EmptyView()
-                #else
                 case .firmware: firmwareSection
-                #endif
                 case .wifi: wifiSection
                 case .pan: panSection
                 case .recordings: recordingPane
@@ -172,7 +160,6 @@ struct DeviceSetupView: View {
 
     // MARK: 固件
 
-    #if !APP_STORE  // 商店版沙盒没有串口权限(Xcode 只认 device.usb),固件只在官网版安装
     private var firmwareSection: some View {
         Section {
             if let bundle = firmware.bundle {
@@ -207,7 +194,6 @@ struct DeviceSetupView: View {
             Text("这台设备上是别的固件。安装后它会变成 Yaha Desk，原来的程序被替换。")
         }
     }
-    #endif
 
     // MARK: Wi-Fi
 
@@ -406,14 +392,19 @@ struct DeviceSetupView: View {
 
     // MARK: AI 润色
 
+    /// 取到的列表里没有当前模型(手填过或旧默认)时也放进去,Picker 才有选中项。
+    private var modelChoices: [String] {
+        aiPolish.models.contains(aiPolish.model) ? aiPolish.models : [aiPolish.model] + aiPolish.models
+    }
+
     private var aiPolishSection: some View {
         Group {
             Section {
                 TextField("接口地址", text: $aiPolish.endpoint, prompt: Text(AIPolish.defaultEndpoint))
+                    .onSubmit { Task { await aiPolish.fetchModels() } }
                 if !aiPolish.endpoint.isEmpty && AIPolish.chatURL(aiPolish.endpoint) == nil {
                     warning("地址需以 https:// 开头(本机服务可用 http://localhost)")
                 }
-                TextField("模型", text: $aiPolish.model, prompt: Text(AIPolish.defaultModel))
                 LabeledContent("API Key") {
                     status(aiPolish.hasKey ? "已保存在钥匙串" : "未填写", ok: aiPolish.hasKey)
                 }
@@ -422,6 +413,7 @@ struct DeviceSetupView: View {
                     Button("保存") {
                         zhipuMessage = aiPolish.saveKey(zhipuKey) ? nil : "保存失败,请检查 Key"
                         zhipuKey = ""
+                        if zhipuMessage == nil { Task { await aiPolish.fetchModels() } }
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(zhipuKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -430,18 +422,33 @@ struct DeviceSetupView: View {
                     }
                 }
                 if let zhipuMessage { warning(zhipuMessage) }
+                HStack {
+                    if aiPolish.models.isEmpty {
+                        TextField("模型", text: $aiPolish.model, prompt: Text(AIPolish.defaultModel))
+                    } else {
+                        Picker("模型", selection: $aiPolish.model) {
+                            ForEach(modelChoices, id: \.self) { Text($0).tag($0) }
+                        }
+                    }
+                    if aiPolish.modelsBusy { ProgressView().controlSize(.small) }
+                    Button(aiPolish.models.isEmpty ? "获取模型列表" : "刷新") { Task { await aiPolish.fetchModels() } }
+                        .disabled(!aiPolish.hasKey || AIPolish.chatURL(aiPolish.endpoint) == nil || aiPolish.modelsBusy)
+                }
+                if let message = aiPolish.modelsMessage { warning(message) }
                 if aiPolish.endpoint != AIPolish.defaultEndpoint || aiPolish.model != AIPolish.defaultModel {
                     Button("恢复智谱 Coding Plan") {
                         aiPolish.endpoint = AIPolish.defaultEndpoint
                         aiPolish.model = AIPolish.defaultModel
+                        Task { await aiPolish.fetchModels() }
                     }
                     .buttonStyle(.link)
                 }
             } header: {
                 Text("接口")
             } footer: {
-                Text("默认是智谱 GLM Coding Plan;也可填任何 OpenAI 兼容的 Chat Completions 接口(base URL 到 /v1 这一级)。Key 只存在本机钥匙串,换接口时记得换 Key。")
+                Text("填好地址和 Key 后自动请求一次模型列表,从中选一个即生效;接口不支持列出模型时可直接手填。默认是智谱 GLM Coding Plan,也可填任何 OpenAI 兼容的 Chat Completions 接口(base URL 到 /v1 这一级)。Key 只存在本机钥匙串,换接口时记得换 Key。")
             }
+            .task { if aiPolish.hasKey && aiPolish.models.isEmpty { await aiPolish.fetchModels() } }
             Section {
                 TextEditor(text: $aiPolish.prompt)
                     .font(.body)

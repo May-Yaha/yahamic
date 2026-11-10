@@ -52,9 +52,9 @@
 
 ## 追加授权与烧录验收（2026-11-03）
 
-- 用户明确要求“需要烧录”。目标为已配对设备 `yahadesk-222a`，USB 端口 `/dev/cu.usbmodem311201`，基础 MAC `44:bd:8d:79:22:28`；同机另一块 ESP32 未操作。
+- 用户明确要求“需要烧录”。目标为已配对设备 `yahadesk-XXXX`，USB 端口 `/dev/cu.usbmodemXXXX`，基础 MAC `xx:xx:xx:xx:xx:xx`；同机另一块 ESP32 未操作。
 - 烧录前完整读取并备份 16MB Flash。备份只保存在本机 `~/Library/Application Support/YahaDesk/firmware-backups/20261103-notification-349feee4-6l04pvzt/`，文件权限为0600；包含配对数据，不入仓库。备份 SHA-256：`f13714a43e95dca3a4a18ad04d9a5bfc9562f5a788824528b90336b8b3716b1a`。
-- 实际分区表与构建产物逐字节一致。使用 ESP-IDF 6.1 环境内 `python -m esptool --chip esp32s3 --port /dev/cu.usbmodem311201 --baud 460800 write-flash --flash-mode keep --flash-freq keep --flash-size keep 0x10000 <产物目录>/yahadesk.bin`，仅写应用区，未改 NVS、bootloader、分区表。
+- 实际分区表与构建产物逐字节一致。使用 ESP-IDF 6.1 环境内 `python -m esptool --chip esp32s3 --port /dev/cu.usbmodemXXXX --baud 460800 write-flash --flash-mode keep --flash-freq keep --flash-size keep 0x10000 <产物目录>/yahadesk.bin`，仅写应用区，未改 NVS、bootloader、分区表。
 - 写入退出码0，真实输出：`Wrote 1992080 bytes ... at 0x00010000 in 6.7 seconds`、`Hash of data verified.`、`Hard resetting via RTS pin...`。应用 SHA-256 与上文构建记录相同。
 - 新程序启动日志：`Project name: yahadesk`、`Compile time: Nov 3 2026 21:05:32`、`ELF file SHA256: 61f19741b...`；产物 ELF 完整摘要为 `61f19741b830ac21e9cfc0667e56c397e857db133a84522546e2e692289dd463`。固件版本按既有契约仍为 `0.1.0`，以编译时间及 ELF 摘要区分此次构建。
 - Mac 自动恢复原有加密 BLE 连接，无需重新配对。推送五行卡 `id=6` 和两行短卡 `id=7`，两次均由 Mac 送往设备，分别完整回传120行屏幕像素；最后云端返回 `synced=true`、`online=true`、`connected=true`、`pending=0`，静音状态保持。

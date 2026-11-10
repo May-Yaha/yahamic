@@ -1,5 +1,11 @@
 # Yaha Desk — 开源无线麦克风与桌面工作台
 
+> **English.** Yaha Desk turns a Waveshare ESP32-S3-Touch-AMOLED-2.16 board (Espressif ESP32-S3) into a
+> wireless BLE microphone for macOS. A menu-bar app decodes the Opus stream into the BlackHole virtual
+> input, adds push-to-talk dictation with on-device Qwen3-ASR (MLX), and optional AI polish via any
+> OpenAI-compatible endpoint. When idle the touch screen is a desk dashboard. Firmware: ESP-IDF 6.1;
+> Mac: Swift 6.2 / macOS 26. Docs are in Chinese. License: GPL-3.0.
+
 本仓由 yahamic 的早期 Wi-Fi 麦克风演进而来；曾在 yahaops 内定制，现已迁回公开仓库。设备仍是 Mac mini 的无线麦克风，
 空闲时是桌面工作台：触摸屏首页沿用雅哈麦克风的时钟与 CPU/内存/鼠标/键盘四环，agent 消息以通知卡片弹出；首页「息屏」卡关掉屏幕省电，触摸任意处唤醒；
 连了 Zhi.AI 时首页多一行入口，进入任务、采集、处理、GLM、小程序的健康总览，点行看详情，新告警自动弹出告警页。
@@ -12,10 +18,14 @@ Mac 上的 Yaha Desk App 自动连上,Mac 上多出一个叫 "BlackHole 2ch" 的
 屏幕上的 6 位数字在 Mac 上配对一次即可。板上按键是**硬件静音**:按下后不再送声,
 一比特音频都不会离开设备。
 
+硬件用的是[乐鑫(Espressif)](https://www.espressif.com/) ESP32-S3R8 芯片,板子是[微雪(Waveshare)](https://www.waveshare.com/)
+的现成开发板;固件基于乐鑫 ESP-IDF 与乐鑫组件库(Opus 编解码、codec、屏幕与触摸驱动、LVGL 移植、MQTT)。
+其中 `esp_audio_codec` 的许可只允许用在乐鑫芯片上。
+
 工程基于开源项目 [OpenCharm](https://github.com/opencharm-labs/opencharm)(给 AI
 代理做"身体"的开源硬件项目,同样使用这块板子):板级驱动与构建配置继承自它;
-音频链路按"纯麦克风"重新设计。感谢 OpenCharm 与
-xiaozhi-esp32(见 [LICENSES/THIRD_PARTY_NOTICES.md](LICENSES/THIRD_PARTY_NOTICES.md))。
+音频链路按"纯麦克风"重新设计。感谢乐鑫、微雪、OpenCharm 与
+xiaozhi-esp32(组件与许可见 [LICENSES/THIRD_PARTY_NOTICES.md](LICENSES/THIRD_PARTY_NOTICES.md))。
 
 ```
 ┌─────────────────────────┐   BLE GATT(加密)     ┌──────────────────────────┐
@@ -93,6 +103,10 @@ yahadesk/
 # 打包并安装 Yaha Desk(菜单栏 App,无 Dock 图标)
 cd mac && ./scripts/make-app.sh --install
 ```
+
+不想自己构建:到 GitHub Releases 下载 Developer ID 签名并公证的 zip(`./scripts/make-app.sh devid` 产出)。
+线下分发可用 `./scripts/make-app.sh --dmg`(开发证书签名、未公证,首次打开需在 系统设置 → 隐私与安全性 里放行)。
+不上架 Mac App Store:按住讲话要全局监听键盘、经辅助功能写入其他 App 的输入框,沙盒里做不到。
 
 首次启动系统会问是否允许 Yaha Desk 使用蓝牙,选允许(之后在 系统设置 → 隐私与安全性
 → 蓝牙 里管理)。
@@ -291,6 +305,12 @@ Yaha Desk 默认以 120 ms 为预缓冲与漂移校正目标;渲染端按缓冲�
 
 ## 云端与桌面工作台
 
+> **云端依赖说明**:工作台总览/告警、设备授权与网盘录音备份依赖作者运营的官方服务 `hub.flyaha.top`
+> 与百度网盘开放平台。地址写在 `firmware/main/cloud.cpp`、`mac/Sources/DeskCore/Link/CloudClient.swift`、
+> `mac/Sources/YahaDesk/Services/PanLogin.swift`;服务端暂不开源,也不支持自建,自行构建的副本连不上这部分功能。
+> 不依赖它的部分照常可用:BLE 麦克风、BlackHole 输入、按住讲话、本地转文字(模型下载后可离线)、
+> AI 润色(自填 Key 与接口)、本机控制接口。设备未授权时首页只是不显示工作台入口。
+
 先部署支持`desk_monitor`、`desk_operate`、`desk_prepare_device`与`desk_status`的服务端（MCP 1.15.0），再使用新版Mac、iPhone与固件。云端地址固定为
 `https://hub.flyaha.top/api/v1/mcp`，设备约每60秒读取健康总览（文章与日报已从固件移除）；
 讲话时暂停联网。总览超过3分钟未更新时清掉红黄绿并提示数据过期。
@@ -431,6 +451,13 @@ iPhone「Yaha 桌面」2026-11-07 起不再靠蓝牙看状态：设备每次 `de
 
 ## 许可证
 
-本仓自有源码以 GNU GPL v3 开源(见 [LICENSE](LICENSE))。第三方组件见
-[LICENSES/THIRD_PARTY_NOTICES.md](LICENSES/THIRD_PARTY_NOTICES.md)。
-本项目与 OpenCharm、Waveshare、Espressif、Apple 无隶属关系。
+本仓自有源码以 GNU GPL v3 开源(见 [LICENSE](LICENSE))。第三方组件(乐鑫 ESP-IDF 与组件、LVGL、
+Noto Sans CJK、BlackHole 等)见 [LICENSES/THIRD_PARTY_NOTICES.md](LICENSES/THIRD_PARTY_NOTICES.md)。
+本项目与 OpenCharm、Waveshare(微雪)、Espressif(乐鑫)、Apple 无隶属关系;ESP32、ESP-IDF 是乐鑫的商标。
+
+## 参与贡献
+
+见 [CONTRIBUTING.md](CONTRIBUTING.md);安全问题按 [SECURITY.md](SECURITY.md) 私下报告。
+
+仓库里的 `AGENTS.md`、`CLAUDE.md`、`.claude/`、`.zcode/`、`.mcp.json` 与 `agent/` 是作者用 AI 编码助手开发时的
+约定与工具(编码图工作流、技能说明),不参与 App 和固件构建,不用 AI 助手可以忽略。

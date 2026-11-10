@@ -16,7 +16,16 @@ final class AIPolish: ObservableObject {
     private let defaults: UserDefaults
     @Published private(set) var hasKey = ZhipuKeychain.load() != nil
     /// OpenAI 兼容的 base URL(到 /v1、/v4 这一级),也可直接填完整的 …/chat/completions。
-    @Published var endpoint: String { didSet { defaults.set(endpoint, forKey: "aiPolishEndpoint") } }
+    @Published var endpoint: String {
+        didSet {
+            defaults.set(endpoint, forKey: "aiPolishEndpoint")
+            if endpoint != oldValue { models = []; modelsMessage = nil }  // 换了接口,旧列表作废
+        }
+    }
+    /// 接口 /models 返回的模型 id;空表示还没取到,设置里退回手填。
+    @Published private(set) var models: [String] = []
+    @Published private(set) var modelsBusy = false
+    @Published private(set) var modelsMessage: String?
     @Published var model: String { didSet { defaults.set(model, forKey: "aiPolishModel") } }
     @Published var prompt: String { didSet { defaults.set(prompt, forKey: "aiPolishPrompt") } }
 
@@ -37,6 +46,51 @@ final class AIPolish: ObservableObject {
     func deleteKey() {
         _ = ZhipuKeychain.delete()
         hasKey = false
+        models = []
+    }
+
+    /// GET {base}/models 列出可用模型,用户从中选一个;选中即存进 model,下次润色直接用。
+    func fetchModels() async {
+        guard let key = ZhipuKeychain.load() else { modelsMessage = "先保存 API Key"; return }
+        guard let url = Self.modelsURL(endpoint) else { modelsMessage = "接口地址无效(需 https)"; return }
+        let asked = endpoint
+        modelsBusy = true
+        defer { modelsBusy = false }
+        var request = URLRequest(url: url, timeoutInterval: 10)
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard endpoint == asked else { return }  // 请求途中改了地址,结果不属于当前接口
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let ids = Self.modelIDs(data)
+            if status == 200, !ids.isEmpty {
+                models = ids
+                modelsMessage = nil
+            } else {
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let reason = (json?["error"] as? [String: Any])?["message"] as? String
+                    ?? (status == 200 ? "列表为空" : "HTTP \(status)")
+                modelsMessage = "取不到模型列表:\(reason)。可直接手填模型名"
+            }
+        } catch {
+            guard endpoint == asked else { return }
+            modelsMessage = "取不到模型列表:\(error.localizedDescription)"
+        }
+    }
+
+    /// chat/completions 同级的 models(OpenAI 兼容约定)。
+    nonisolated static func modelsURL(_ endpoint: String) -> URL? {
+        guard var url = chatURL(endpoint) else { return nil }
+        url.deleteLastPathComponent()
+        url.deleteLastPathComponent()
+        return url.appending(path: "models")
+    }
+
+    /// OpenAI 兼容的 {"data": [{"id": …}]},去重排序。
+    nonisolated static func modelIDs(_ data: Data) -> [String] {
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let ids = (json?["data"] as? [[String: Any]])?.compactMap { $0["id"] as? String } ?? []
+        return Set(ids).sorted()
     }
 
     /// Key 走 Bearer 头,只发 https;http 只放行本机(本地模型服务)。

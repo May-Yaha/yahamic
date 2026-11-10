@@ -37,13 +37,8 @@ public enum ListenPermission: String, Equatable, CaseIterable {
     }
 
     /// 预检(不弹系统框):辅助功能与输入监听分开评估。
-    /// 商店版(APP_STORE)是沙盒、只用 listenOnly tap,只需要输入监听,辅助功能不算缺。
     public static func preflight() -> ListenPermission {
-        #if APP_STORE
-        let ax = true
-        #else
         let ax = AXIsProcessTrusted()
-        #endif
         let input = CGPreflightListenEventAccess()
         switch (ax, input) {
         case (true, true): return .ok
@@ -61,12 +56,10 @@ public enum ListenPermission: String, Equatable, CaseIterable {
         if !CGPreflightListenEventAccess() {
             _ = CGRequestListenEventAccess()
         }
-        #if !APP_STORE
         if !AXIsProcessTrusted() {
             let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
             _ = AXIsProcessTrustedWithOptions(options as CFDictionary)
         }
-        #endif
         return preflight()
     }
 }
@@ -169,17 +162,10 @@ public final class FnListener {
         // passRetained:tap 存活期间实例不会被释放,杜绝「实例已 dealloc 而事件
         // 又到」的 use-after-free;stop() 里成对 release。
         let retained = Unmanaged.passRetained(self)
-        // 商店版:沙盒不能拿辅助功能,只能 listenOnly(回调本来就不改事件)。
-        // shortcut: 会话层 listenOnly 能否收到 Fn 未实测(HID 层 listenOnly 在 macOS 27 零事件过)。
-        #if APP_STORE
-        let options = CGEventTapOptions.listenOnly
-        #else
-        let options = CGEventTapOptions.defaultTap
-        #endif
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: options,
+            options: .defaultTap,
             eventsOfInterest: mask,
             callback: fnTapCallback,
             userInfo: retained.toOpaque()

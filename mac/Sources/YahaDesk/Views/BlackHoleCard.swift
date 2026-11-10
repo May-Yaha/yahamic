@@ -17,11 +17,6 @@ struct BlackHoleCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            #if APP_STORE
-            // 商店版:沙盒不能以管理员身份跑安装器,审核也不许引导 sudo,只给官网。
-            Link("前往 BlackHole 官网下载", destination: URL(string: "https://existential.audio/blackhole/")!)
-                .font(.caption)
-            #else
             HStack(spacing: 8) {
                 Button(action: onInstall) {
                     Text(state.busy ? "安装中…" : "一键安装")
@@ -45,7 +40,6 @@ struct BlackHoleCard: View {
             } label: {
                 Text("改用终端安装").font(.caption).foregroundStyle(.secondary)
             }
-            #endif
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.orange.opacity(0.12)))

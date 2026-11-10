@@ -212,17 +212,12 @@ final class HomeModel: ObservableObject {
 
     /// 本机控制接口(Unix socket,仅本用户可连):MCP 桥/脚本从这里驱动 App,压测全走它。
     private func startControlServer() {
-        #if APP_STORE
-        // 商店版不开:容器路径常超 sun_path 104 字节,外部脚本也进不了沙盒容器;压测用 dev/devid 版。
-        return
-        #else
         let path = ControlServer.defaultPath
         control = ControlServer(path: path) { [weak self] request in
             guard let self else { return ["error": "app-not-ready"] }
             return await self.handleControl(request)
         }
         log(control != nil ? "控制接口已监听 \(path.path)(MCP/压测用)" : "⚠️ 控制接口启动失败")
-        #endif
     }
 
     /// yahaops 云端:每次读 self.uplink,链路重建后自动跟到新实例。
@@ -326,7 +321,6 @@ final class HomeModel: ObservableObject {
     }
 
     func installBlackHole() {
-        #if !APP_STORE
         guard !blackHoleInstall.busy else { return }
         blackHoleInstall = .downloading
         log("开始安装 BlackHole")
@@ -340,7 +334,6 @@ final class HomeModel: ObservableObject {
                 log("⚠️ BlackHole 安装:\(error.localizedDescription)")
             }
         }
-        #endif
     }
 
     func copyBlackHoleCommand() {

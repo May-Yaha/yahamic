@@ -57,7 +57,7 @@ App产物仍位于 `yahaops-desk/mac/build/YahaDesk.app`，菜单图标预览位
 
 ## 真机安装与免填连接补充
 
-用户已授权将固件烧入当前 `yahadesk-222a`，重新编译安装 Mac App；另确认连接信息预置、无需手填 Client ID/密钥、固件文字使用中文，并要求记录到 agent 唯一源 `agent/shared.md`。密钥仅安装到本机钥匙串，不进入 Git 或固件。
+用户已授权将固件烧入当前 `yahadesk-XXXX`，重新编译安装 Mac App；另确认连接信息预置、无需手填 Client ID/密钥、固件文字使用中文，并要求记录到 agent 唯一源 `agent/shared.md`。密钥仅安装到本机钥匙串，不进入 Git 或固件。
 
 服务端初始由用户发布到 `ae45b073`，随后本需求提交 `26d1c2b8` 已由用户执行唯一入口发布；带缓存穿透的 OAuth 元数据已核对当前 release 与 `desk.configure`。Mac 控制端改用显式 client credentials 模式；设备保留独立 public 应用及 PKCE 同意，避免把广权限密钥交给设备。准备专用设备应用的接口只返回公开 Client ID，不直接签发设备授权。
 

@@ -3,8 +3,8 @@
   "firmware_sha256": "adb959f2f7273d4524815a773eb836b6c65050c4d17b365ce71f9970fe9d47f5",
   "elf_sha256": "e08e5e27890c289f9671f8cd920819d22b2c4fdc31b829ab12ce22ea1bd1dde0",
   "target": {
-    "usb_port": "/dev/cu.usbmodem311101",
-    "base_mac": "44:bd:8d:79:22:28"
+    "usb_port": "/dev/cu.usbmodemXXXX",
+    "base_mac": "xx:xx:xx:xx:xx:xx"
   },
   "control": {
     "before": {
@@ -13,7 +13,7 @@
         "overflows": 0,
         "rssi": -44,
         "framesPerSecond": 0,
-        "name": "yahadesk-222a",
+        "name": "yahadesk-XXXX",
         "levelDb": -120,
         "muted": true,
         "diag": {
@@ -68,7 +68,7 @@
         "rssi": -46,
         "framesPerSecond": 6,
         "levelDb": -74.04527419326273,
-        "name": "yahadesk-222a",
+        "name": "yahadesk-XXXX",
         "muted": true,
         "diag": {
           "decodedFrames": 101,
@@ -125,7 +125,7 @@
         "rssi": -45,
         "framesPerSecond": 0,
         "levelDb": -74.04527419326273,
-        "name": "yahadesk-222a",
+        "name": "yahadesk-XXXX",
         "muted": true,
         "diag": {
           "rxPackets": 101,

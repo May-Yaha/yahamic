@@ -31,6 +31,6 @@
 
 ## 烧录记录
 
-- 2026-11-07 用户授权烧录。从 `main` 提交 `2bae9e29` 构建，写入 `yahadesk-222a` 的 bootloader、分区表与应用，SHA 校验通过；未擦 NVS。
+- 2026-11-07 用户授权烧录。从 `main` 提交 `2bae9e29` 构建，写入 `yahadesk-XXXX` 的 bootloader、分区表与应用，SHA 校验通过；未擦 NVS。
 - 启动：固件 0.3.0，未重新配对即连回 Mac，`wifi:pm start, type: 1`；`screens ready LVGL total=59068 free=11528 max_used=47540`，无 `E` 级日志。
 - 烧录后 Wi-Fi 已连上时 30 s 压测：498 帧收发一致，跳号 0，欠载 0，缓冲最低 99.8 ms。

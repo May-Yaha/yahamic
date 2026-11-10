@@ -248,3 +248,14 @@ struct LocalDictationTests {
     #expect(AIPolish.chatURL("http://api.example.com/v1") == nil)  // Key 不走明文
     #expect(AIPolish.chatURL("api.example.com/v1") == nil)
 }
+
+@Test func aiPolishModelsURLAndListParsing() {
+    #expect(AIPolish.modelsURL(AIPolish.defaultEndpoint)?.absoluteString
+        == "https://open.bigmodel.cn/api/coding/paas/v4/models")
+    #expect(AIPolish.modelsURL("https://api.example.com/v1/chat/completions")?.absoluteString
+        == "https://api.example.com/v1/models")
+    #expect(AIPolish.modelsURL("http://api.example.com/v1") == nil)
+    let body = Data(#"{"object":"list","data":[{"id":"glm-b"},{"id":"glm-a"},{"id":"glm-b"},{"x":1}]}"#.utf8)
+    #expect(AIPolish.modelIDs(body) == ["glm-a", "glm-b"])
+    #expect(AIPolish.modelIDs(Data("not json".utf8)).isEmpty)
+}

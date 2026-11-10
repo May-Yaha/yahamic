@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware-host:
+    # 不需要 ESP-IDF 的固件纯逻辑测试;依赖 managed_components 的 cJSON 测试留在本机跑。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -I firmware/main firmware/tests/display_test.cpp -o /tmp/display-test
+          /tmp/display-test
+      - run: |
+          for t in audio_mute_lifecycle_test cloud_refresh_test font_metrics_test uplink_snapshot_test wifi_audio_latency_test; do
+            python3 firmware/tests/$t.py
+          done
+
+  mac:
+    # 需要 macOS 26 + Xcode 26(Swift 6.2)。
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install opus
+      - working-directory: mac
+        run: swift build
+      - working-directory: mac
+        run: swift test

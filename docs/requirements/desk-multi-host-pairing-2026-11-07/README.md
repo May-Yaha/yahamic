@@ -29,13 +29,13 @@
 
 ## 烧录记录
 
-- 2026-11-07 用户授权烧录。写入设备 `yahadesk-222a` 的 bootloader、分区表与应用，SHA 校验通过；未擦除 NVS，未写 `fac`。
-- 启动日志：固件 0.3.0、以 `yahadesk-222a` 广播、无错误或重启。`wifi down reason 201` 为公司无已存 Wi-Fi，与本次无关。
+- 2026-11-07 用户授权烧录。写入设备 `yahadesk-XXXX` 的 bootloader、分区表与应用，SHA 校验通过；未擦除 NVS，未写 `fac`。
+- 启动日志：固件 0.3.0、以 `yahadesk-XXXX` 广播、无错误或重启。`wifi down reason 201` 为公司无已存 Wi-Fi，与本次无关。
 
 ## 本机安装
 
 - 2026-11-07 11:28 用 `scripts/make-app.sh --install` 本机打包（Apple Development 签名）并替换 `/Applications/YahaDesk.app`，未发布。11:29:12 新版日志识别到 `Peer removed pairing information`，面板进入配对丢失提示。
-- 用户在系统设置里忽略 yahadesk 并重新配对后，11:42:43 日志 `yahadesk-222a 上线(蓝牙已加密)`，`status` 为 `connected: true`、RSSI -36 dBm、静音待命，溢出/欠载/丢帧为 0。
+- 用户在系统设置里忽略 yahadesk 并重新配对后，11:42:43 日志 `yahadesk-XXXX 上线(蓝牙已加密)`，`status` 为 `connected: true`、RSSI -36 dBm、静音待命，溢出/欠载/丢帧为 0。
 
 ## 未验证
 

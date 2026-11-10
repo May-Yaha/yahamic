@@ -1,5 +1,7 @@
 # Yaha Desk Mac 上架与 iOS App（2026-11-06）
 
+> **2026-11-10 起已废弃 Mac App Store 渠道**：Mac 只走 GitHub Release（Developer ID + 公证），`APP_STORE` 编译分支与商店签名已删除。下文为历史记录。
+
 ## 目标与授权
 
 用户 2026-11-06：「帮我优化一下macosapp的ui和界面，然后做到可以上架的水平，同时需要考虑一下iosapp的发布，ios的app只做录音的展示和设备的配置，比如切换wifi等这些行为，不做录音相关的，录音只适用于macos」。同日确认：
