@@ -2,6 +2,8 @@
 
 欢迎提 issue 和 PR。文档与注释以中文为主,英文 issue 也可以。
 
+第一次参与可以先看带 `good first issue` 或 `help wanted` 标签的 issue,方向参考 README 的「欢迎参与」。
+
 ## 环境
 
 - Mac App:macOS 26、Xcode 26(Swift 6.2+)、`brew install opus`。

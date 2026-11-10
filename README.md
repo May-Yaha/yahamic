@@ -1,12 +1,48 @@
-# Yaha Desk — 开源无线麦克风与桌面工作台
+# Yaha Desk — ESP32-S3 无线麦克风 + Mac 本地语音输入
 
-> **English.** Yaha Desk turns a Waveshare ESP32-S3-Touch-AMOLED-2.16 board (Espressif ESP32-S3) into a
-> wireless BLE microphone for macOS. A menu-bar app decodes the Opus stream into the BlackHole virtual
-> input, adds push-to-talk dictation with on-device Qwen3-ASR (MLX), and optional AI polish via any
-> OpenAI-compatible endpoint. When idle the touch screen is a desk dashboard. Firmware: ESP-IDF 6.1;
-> Mac: Swift 6.2 / macOS 26. Docs are in Chinese. License: GPL-3.0.
+[![CI](https://github.com/May-Yaha/yahamic/actions/workflows/ci.yml/badge.svg)](https://github.com/May-Yaha/yahamic/actions/workflows/ci.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-ESP32--S3%20%7C%20macOS%2026-lightgrey)
+![Swift](https://img.shields.io/badge/Swift-6.2-orange)
+![ESP-IDF](https://img.shields.io/badge/ESP--IDF-6.1-red)
 
-本仓由 yahamic 的早期 Wi-Fi 麦克风演进而来；曾在 yahaops 内定制，现已迁回公开仓库。设备仍是 Mac mini 的无线麦克风，
+**English.** An open-source **ESP32-S3 wireless Bluetooth (BLE) microphone for macOS**, plus a menu-bar app with
+**push-to-talk local speech-to-text** (Qwen3-ASR on Apple MLX, fully offline) and optional **AI polish** through any
+OpenAI-compatible API. Hold a key, speak, release: the text lands in the focused input of any app (Codex, Claude Code,
+terminals, WeChat, Electron/Flutter apps). The board streams 16 kHz Opus over BLE GATT; the Mac exposes it as a
+system microphone through BlackHole, so Zoom, FaceTime and QuickTime can use it too. When idle, the 480×480 AMOLED
+touch screen is a desk dashboard (clock, CPU/memory rings, notifications). Firmware: ESP-IDF 6.1 + LVGL 9;
+Mac: Swift 6.2 / SwiftUI, macOS 26. Docs are mostly in Chinese; English issues and PRs are welcome.
+
+**中文.** 一块约 ¥250 的乐鑫 ESP32-S3 开发板,刷上固件就是 Mac 的**蓝牙无线麦克风**;配套菜单栏 App 提供
+**按住说话、松开出字**的本地语音输入(Qwen3-ASR + MLX,离线可用)和可选的 **AI 润色**(任意 OpenAI 兼容接口)。
+
+## 亮点
+
+- **硬件静音**:板上按键一按,一比特音频都不会离开设备;BLE 全程 LE Secure Connections + MITM 配对。
+- **本地语音转文字**:Qwen3-ASR 0.6B 在 Apple Silicon 上实时出字幕,停顿处定稿,不上传语音。
+- **写入任意 App**:辅助功能写入 / 键盘事件 / 剪贴板粘贴三条路自动选择,兼容终端、Electron(Codex)、Flutter(如流)、微信。
+- **AI 润色(可选)**:去口头语、修标点,默认智谱 GLM,可换任意 OpenAI 兼容接口或本机模型服务。
+- **系统麦克风**:经 BlackHole 虚拟声卡,会议、录音软件都能直接选它。
+- **桌面工作台**:480×480 AMOLED 触摸屏显示时钟、Mac 负载、通知卡片。
+- **可测试**:BLE 协议纯逻辑单测、固件 host 测试、本机控制接口自带端到端压测。
+
+## 欢迎参与
+
+适合上手的方向(详见 [CONTRIBUTING.md](CONTRIBUTING.md)):
+
+- **更多硬件**:移植到其它 ESP32-S3 麦克风板(如 ESP32-S3-BOX、XIAO ESP32S3 Sense)。
+- **更多语言与模型**:英文/多语种识别、Whisper 等其它 MLX 语音模型、热词。
+- **兼容性**:更多 App 的文字写入适配,反馈哪个输入框写不进去也很有用。
+- **音质**:24 kHz 档、降噪、回声消除。
+- **文档**:英文文档、上手视频、外壳与 3D 打印。
+
+关键词:ESP32 microphone, ESP32-S3 BLE audio, wireless mic for Mac, macOS dictation, push-to-talk,
+speech-to-text, voice typing, Qwen3-ASR, MLX, Opus, BlackHole, LVGL, ESP-IDF, SwiftUI menu bar app。
+
+## 项目背景
+
+本仓由 yahamic 的早期 Wi-Fi 麦克风演进而来。设备仍是 Mac mini 的无线麦克风，
 空闲时是桌面工作台：触摸屏首页沿用雅哈麦克风的时钟与 CPU/内存/鼠标/键盘四环，agent 消息以通知卡片弹出；首页「息屏」卡关掉屏幕省电，触摸任意处唤醒；
 连了 Zhi.AI 时首页多一行入口，进入任务、采集、处理、GLM、小程序的健康总览，点行看详情，新告警自动弹出告警页。
 音频走 BLE，设备通过 Wi-Fi 直接同步云端。
