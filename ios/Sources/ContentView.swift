@@ -7,6 +7,7 @@ struct ContentView: View {
             Tab("设备", systemImage: "mic.circle") { NavigationStack { HomeView() } }
             Tab("录音", systemImage: "waveform") { NavigationStack { RecordingsView() } }
         }
+        .tabViewStyle(.sidebarAdaptable)  // 宽度够(折叠屏展开、横屏大屏)时系统改成侧栏,窄屏仍是底部标签
     }
 
     nonisolated static func dmsLabel(_ dms: String?) -> String {

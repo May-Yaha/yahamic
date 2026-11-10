@@ -44,7 +44,8 @@ targets:
         CFBundleShortVersionString: "0.5.0"  # 与 Mac、固件同版(make-app.sh 校验)
         CFBundleVersion: "0.5.0"
         UILaunchScreen: {}
-        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # 折叠屏展开、横放都要能用:放开横屏,宽屏下 TabView 变侧栏。
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSBluetoothAlwaysUsageDescription: Yaha Desk 在切换 Wi-Fi 和设备管理页通过蓝牙给桌面设备切换网络、绑定网盘，不采集音频。
         ITSAppUsesNonExemptEncryption: false
     settings:
