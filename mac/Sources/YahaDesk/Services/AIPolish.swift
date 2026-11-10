@@ -1,3 +1,4 @@
+import DeskProtocol
 import Foundation
 import Security
 
@@ -104,21 +105,36 @@ final class AIPolish: ObservableObject {
     }
 
     func polish(_ text: String) async throws -> String {
-        guard let key = ZhipuKeychain.load() else { throw LocalSTTError("未填写 AI 润色的 API Key") }
-        guard let url = Self.chatURL(endpoint) else { throw LocalSTTError("AI 润色地址无效(需 https)") }
-        let model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         let prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        var request = URLRequest(url: url, timeoutInterval: 10)
+        return try await chat(system: prompt.isEmpty ? Self.defaultPrompt : prompt, user: text, timeout: 10, what: "AI 润色")
+    }
+
+    static let summaryPrompt = """
+        你是工作总结助手。下面是用户一天里按时间顺序的语音听写记录,每行开头是时间。\
+        整理成一份简洁的中文工作总结,分三段,段名单独一行:【今天做了什么】按主题归并而不是按时间流水;\
+        【待办】没有就写「无」;【关键结论】。条目用「• 」开头。只依据记录内容,不编造,\
+        代码、命令和专有名词保持原样。不要用 Markdown 标题或加粗。
+        """
+
+    /// iPhone「AI 总结」:一天的听写文字(已带时间)交给同一个接口和模型整理成工作总结。
+    func summarize(_ lines: [String]) async throws -> String {
+        try await chat(system: Self.summaryPrompt, user: lines.joined(separator: "\n"), timeout: 90, what: "AI 总结")
+    }
+
+    private func chat(system: String, user: String, timeout: TimeInterval, what: String) async throws -> String {
+        guard let key = ZhipuKeychain.load() else { throw DeskProtocolError("未填写\(what)的 API Key") }
+        guard let url = Self.chatURL(endpoint) else { throw DeskProtocolError("\(what)地址无效(需 https)") }
+        let model = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         var body: [String: Any] = [
             "model": model.isEmpty ? Self.defaultModel : model,
-            "messages": [["role": "system", "content": prompt.isEmpty ? Self.defaultPrompt : prompt],
-                         ["role": "user", "content": text]],
+            "messages": [["role": "system", "content": system], ["role": "user", "content": user]],
             "temperature": 0.2,
         ]
-        // 智谱专有参数:润色不需要推理,关掉省时延。别家接口可能拒收未知字段,不带。
+        // 智谱专有参数:润色、总结都不需要推理,关掉省时延。别家接口可能拒收未知字段,不带。
         if url.host()?.hasSuffix("bigmodel.cn") == true { body["thinking"] = ["type": "disabled"] }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -126,12 +142,12 @@ final class AIPolish: ObservableObject {
         let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard status == 200 else {
             let message = (json?["error"] as? [String: Any])?["message"] as? String ?? "HTTP \(status)"
-            throw LocalSTTError("AI 润色失败:\(message)")
+            throw DeskProtocolError("\(what)失败:\(message)")
         }
         let content = ((json?["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any])?["content"] as? String
-        let polished = content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !polished.isEmpty else { throw LocalSTTError("AI 润色返回为空") }
-        return polished
+        let text = content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !text.isEmpty else { throw DeskProtocolError("\(what)返回为空") }
+        return text
     }
 }
 

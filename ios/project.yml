@@ -35,6 +35,7 @@ targets:
       - ../mac/Sources/YahaDesk/Services/TakePlayer.swift
       - ../mac/Sources/YahaDesk/Views/TakeViews.swift
       - ../mac/Sources/YahaDesk/Services/DmsClient.swift
+      - ../mac/Sources/YahaDesk/Services/AIPolish.swift
     info:
       path: Info.plist
       properties:
@@ -44,7 +45,7 @@ targets:
         CFBundleShortVersionString: "0.5.2"  # 与 Mac、固件同版(make-app.sh 校验)
         CFBundleVersion: "0.5.2"
         UILaunchScreen: {}
-        # 折叠屏展开、横放都要能用:放开横屏,宽屏下 TabView 变侧栏。
+        # 折叠屏展开、横放都要能用:放开横屏,宽屏下左右分栏(见 ContentView)。
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSBluetoothAlwaysUsageDescription: Yaha Desk 在切换 Wi-Fi 和设备管理页通过蓝牙给桌面设备切换网络、绑定网盘，不采集音频。
         ITSAppUsesNonExemptEncryption: false

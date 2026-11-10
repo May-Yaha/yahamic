@@ -1,13 +1,28 @@
 import SwiftUI
 
 /// 版式全部用系统控件与 Dynamic Type 文字样式（HIG 默认 8 pt 网格），不自定义字号与间距，跟随系统字号缩放。
+/// 窄屏(iPhone、Duo 折叠)底部两个标签;宽屏(Duo 展开、横放)左右分栏,左边设备状态与常用操作,右边录音时间线。
 struct ContentView: View {
+    @State private var width: CGFloat = 0
+
     var body: some View {
-        TabView {
-            Tab("设备", systemImage: "mic.circle") { NavigationStack { HomeView() } }
-            Tab("录音", systemImage: "waveform") { NavigationStack { RecordingsView() } }
+        Group {
+            if width >= 600 {
+                HStack(spacing: 0) {
+                    NavigationStack { HomeView() }
+                        .frame(width: min(max(width * 0.45, 320), 420))
+                    Divider().ignoresSafeArea()
+                    NavigationStack { RecordingsView() }
+                }
+            } else {
+                TabView {
+                    Tab("设备", systemImage: "mic.circle") { NavigationStack { HomeView() } }
+                    Tab("录音", systemImage: "waveform") { NavigationStack { RecordingsView() } }
+                }
+            }
         }
-        .tabViewStyle(.sidebarAdaptable)  // 宽度够(折叠屏展开、横屏大屏)时系统改成侧栏,窄屏仍是底部标签
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .animation(.snappy, value: width >= 600)
     }
 
     nonisolated static func dmsLabel(_ dms: String?) -> String {
@@ -51,6 +66,7 @@ struct HomeView: View {
             }
             Section("设备与账号") {
                 NavigationLink { DeviceManageView() } label: { Label("设备管理", systemImage: "gearshape.fill").labelStyle(.badge(.gray)) }
+                NavigationLink { AISettingsView() } label: { Label("AI 总结", systemImage: "sparkles").labelStyle(.badge(.purple)) }
                 account("Zhi.AI", systemImage: "person.fill", color: .indigo, loggedIn: cloud.loggedIn, busy: cloud.busy,
                         login: { await cloud.login() }, logout: cloud.logout)
                 account("百度网盘", systemImage: "externaldrive.fill", color: .cyan, loggedIn: recordings.token != nil, busy: recordings.busy,

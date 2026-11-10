@@ -160,6 +160,15 @@ final class YahaDeskIOSTests: XCTestCase {
         let groups = PanFiles.days([item(1, 1_800_000_000), item(2, 1_800_032_400), item(3, 1_800_003_600)], calendar: calendar)
         XCTAssertEqual(groups.map { $0.items.map(\.id) }, [[2], [3, 1]])
     }
+
+    /// 总结的输入按时间正序、带时间,没文字或只有空白的录音不进。
+    func testSummaryLinesAreChronologicalAndSkipEmptyTexts() {
+        let take = { (id: UInt64, at: TimeInterval) in PanFiles.Take(audio: PanFiles.Item(id: id, path: "/\(id).opus", size: 1, mtime: Date(timeIntervalSince1970: at))) }
+        let lines = DaySummarySheet.lines([take(1, 200), take(2, 100), take(3, 300)], texts: [1: " 修好登录 ", 2: "开站会", 3: "  "])
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertTrue(lines[0].hasSuffix(" 开站会"))
+        XCTAssertTrue(lines[1].hasSuffix(" 修好登录"))
+    }
 }
 
 private extension DeviceCloudState {
