@@ -10,7 +10,7 @@ function taskPrompt({ task, plan, repo, verify, workspace }) {
     ? `\n上一轮验证结果（供修复参考）：\n${verify.checks.map(check => `${check.passed ? '✓' : '✗'} ${check.label ?? check.command}${check.passed ? '' : `\n诊断尾部：\n${(check.diagnostics ?? '').slice(-2000)}`}`).join('\n')}`
     : '';
   const tree = repo?.tree?.length ? repo.tree.slice(0, 80).join('\n') : '';
-  return `工作区：${workspace}（yahamic：Mac mini 无线麦克风；firmware/=ESP32-S3 固件 C++ ESP-IDF，mac/=Swift 包 YahaHome）
+  return `工作区：${workspace}（yahamic：Mac mini 无线麦克风；firmware/=ESP32-S3 固件 C++ ESP-IDF，apps/=各端应用：apps/macos/ Swift 包 YahaDesk 菜单栏 App、apps/ios/ iOS App、apps/shared/ 两端共用 Swift 包；test/=demo 验证，不进产品）
 计划总览：${plan?.summary ?? ''}
 
 执行任务：${task.title}（${task.id}，${task.kind}）

@@ -1,0 +1,31 @@
+# 手机当麦克风的 PushToTalk 验证 demo(独立工程,不进商店版 YahaDeskIOS)。用法见 README.md。
+name: PhoneMicPTT
+options:
+  bundleIdPrefix: com.yaha
+  deploymentTarget:
+    iOS: "26.0"
+targets:
+  PhoneMicPTT:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    entitlements:
+      path: PhoneMicPTT.entitlements
+      properties:
+        com.apple.developer.push-to-talk: true
+        aps-environment: development  # PTT 下发临时推送令牌要求开推送,demo 不用它
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: PTT 验证
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio, push-to-talk, bluetooth-central, bluetooth-peripheral]
+        NSMicrophoneUsageDescription: 验证 Mac 讲话键能否经蓝牙在后台触发手机采集。
+        NSBluetoothAlwaysUsageDescription: 与 Mac 上的验证脚本互连,接收讲话键并回传电平。
+    settings:
+      base:
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        PRODUCT_BUNDLE_IDENTIFIER: com.yaha.desk.pttspike
+        DEVELOPMENT_TEAM: BB24N2QQD3
+        TARGETED_DEVICE_FAMILY: 1

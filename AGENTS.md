@@ -1,6 +1,6 @@
 # yahamic 仓库的 Agent 指引
 
-本仓库的编码任务(改 firmware/ 或 mac/ 代码、修 bug、加功能)默认走 **yahamic-agent 图工作流**,而不是直接动手改:
+本仓库的编码任务(改 firmware/ 或 apps/macos/ 代码、修 bug、加功能)默认走 **yahamic-agent 图工作流**,而不是直接动手改:
 
 - 通过 `yahamic-agent` MCP server 的工具执行:`yaha_agent_run_task { task }`(真实运行,消耗 Coding Plan 额度并修改工作区)→ 轮询 `yaha_agent_run_status` → 终态后读 `yaha_agent_blackboard { ns: "report" }`
 - 图工作流 = 召回(yahallmwiki)→ 规划(决策点)→ 路由(决策点)→ 执行(Pi GLM/Kimi、Codex)→ 验证(swift build)→ 返工护栏(rework≤2)→ 沉淀
@@ -10,6 +10,13 @@
 以下情况不要调图工作流,直接做:纯问答、只读代码/解释、文档措辞级微调。
 
 详细工具语义、异常自修与领域事实(ESP-IDF、代理、串口)见 `agent/skills/coding-task/SKILL.md`;架构与配置见 `agent/README.md`。
+
+## 目录与文档归档
+
+- 顶层分两块：`firmware/`（ESP32-S3 固件）与 `apps/<平台>/`（`shared` 为 macOS/iOS 共用 Swift 包，`macos`、`ios`，后续 `android` 同级新增）。`agent/` 是图工作流，`docs/` 是文档。
+- 「先证明能不能做」的 demo 与可行性验证放 `test/<主题>/`：自带 README（问题、步骤、结论、踩坑），能独立构建，不依赖也不改 `apps/`、`firmware/`，不进 CI 和发布包，bundle id 与 BLE UUID 与正式产品错开；结论写回对应需求文档，并在 `test/README.md` 登记一行。单元测试跟着各端走，不放 `test/`。
+- `docs/requirements/` 只放近两天的需求：目录名日期早于「今天 − 2 天」的整目录 `git mv` 到 `docs/archive/requirements/`，同步更新两边的 README 索引。一次性报告、审计、迁移记录放 `docs/archive/reports/`。`architecture.md`、`cloud-contract.md`、`domain-glossary.md` 是长期文档，不归档，内容随代码更新。
+- 每次新增需求文档时顺带检查归档；移动后修正所有相对链接（含 README、AGENTS.md 与其他需求文档里的引用）。
 
 ## 产品与安全约定
 

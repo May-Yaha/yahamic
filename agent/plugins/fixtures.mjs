@@ -5,7 +5,7 @@
 export function fixtureRepo(_params) {
   return {
     async execute() {
-      return { outputs: { repo: { workspace: '/demo/workspace', task: 'demo', tree: ['firmware/', 'mac/'], readme: '# demo', manifests: {} } } };
+      return { outputs: { repo: { workspace: '/demo/workspace', task: 'demo', tree: ['firmware/', 'apps/'], readme: '# demo', manifests: {} } } };
     },
   };
 }

@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: brew install opus
-      - working-directory: mac
+      - working-directory: apps/macos
         run: swift build
-      - working-directory: mac
+      - working-directory: apps/macos
         run: swift test

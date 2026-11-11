@@ -1,0 +1,66 @@
+name: YahaDeskIOS
+options:
+  bundleIdPrefix: com.yaha
+  deploymentTarget:
+    iOS: "26.0"
+packages:
+  # macOS 与 iOS 共用的代码(DeskProtocol、DeskShared),本地 SwiftPM 包,静态链接进 App。
+  Shared:
+    path: ../shared
+targets:
+  YahaDeskIOS:
+    type: application
+    platform: iOS
+    dependencies:
+      - package: Shared
+        product: DeskProtocol
+      - package: Shared
+        product: DeskShared
+    sources:
+      - Sources
+      # 图标由 ../macos/scripts/make-icon.swift <png> ios 生成(无 alpha,满幅)。
+      - Assets.xcassets
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Yaha Desk
+        CFBundleIdentifier: com.yaha.desk  # 与 Mac 同一 bundle id
+        # 必须是字符串:写成数字时 CFNetwork 拼 User-Agent 会崩(首个网络请求即闪退)。
+        CFBundleShortVersionString: "0.5.2"  # 与 Mac、固件同版(make-app.sh 校验)
+        CFBundleVersion: "0.5.2"
+        UILaunchScreen: {}
+        # 折叠屏展开、横放都要能用:放开横屏,宽屏下左右分栏(见 ContentView)。
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSBluetoothAlwaysUsageDescription: Yaha Desk 在切换 Wi-Fi 和设备管理页通过蓝牙给桌面设备切换网络、绑定网盘，不采集音频。
+        NSRemindersFullAccessUsageDescription: Yaha Desk 把工作总结里的待办加入提醒事项，只新建条目，不读取已有提醒。
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: minimal
+        CODE_SIGN_STYLE: Automatic
+        PRODUCT_BUNDLE_IDENTIFIER: com.yaha.desk
+        DEVELOPMENT_TEAM: BB24N2QQD3
+        ENABLE_PREVIEWS: YES
+        TARGETED_DEVICE_FAMILY: 1
+  YahaDeskIOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+    dependencies:
+      - target: YahaDeskIOS
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: minimal
+        DEVELOPMENT_TEAM: BB24N2QQD3
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  YahaDeskIOS:
+    build:
+      targets:
+        YahaDeskIOS: all
+        YahaDeskIOSTests: [test]
+    test:
+      targets: [YahaDeskIOSTests]

@@ -1,14 +1,15 @@
 # YahaDesk 架构
 
 ESP32-S3 固件与 Mac App 通过加密 BLE 传音频、静音、指标、配网和设备授权；设备直接以 Wi-Fi/HTTPS 连接云端。
-Mac 只负责配网与设备授权交付，不拉取或确认设备指令。设备空闲界面是桌面工作台，契约见[桌面工作台需求](requirements/desk-workbench-2026-11-05/README.md)；2026-11-05 删除了页面轮播。
+Mac 只负责配网与设备授权交付，不拉取或确认设备指令。设备空闲界面是桌面工作台，契约见[桌面工作台需求](archive/requirements/desk-workbench-2026-11-05/README.md)；2026-11-05 删除了页面轮播。
 
 ## 模块与职责
 
 | 模块 | 职责与边界 |
 | --- | --- |
-| Mac `DeskProtocol` | 音频分片、GATT载荷、配网载荷、PKCE和回调解析；无I/O |
-| Mac `DeskCore/Link` | `Uplink`串行队列维护BLE；`CloudClient`负责HTTPS/OAuth/MCP，`LoopbackReceiver`仅监听127.0.0.1的随机端口 |
+| 共用 `DeskProtocol`（`apps/shared`） | 音频分片、GATT载荷、配网载荷、PKCE和回调解析；无I/O |
+| 共用 `DeskShared`（`apps/shared`） | `CloudClient`负责HTTPS/OAuth/MCP，`LoopbackReceiver`仅监听127.0.0.1的随机端口；网盘登录与文件、DMS、录音回放、AI 整理；macOS 与 iOS 都依赖 |
+| Mac `DeskCore/Link` | `Uplink`串行队列维护BLE、Opus解码 |
 | Mac `DeskCore/Audio` / `Input` / `Metrics` | Opus/BlackHole出口、讲话键、CPU/内存/键鼠和Mac电量；指标走BLE，不经云端 |
 | Mac `YahaDesk/Services/CloudSync` | 控制授权生命周期、配网/设备授权交付；控制refresh token存钥匙串，设备token不留Mac |
 | Mac `YahaDesk/Views` | 菜单栏入口、独立控制窗口、配网与设备授权 |
@@ -51,4 +52,4 @@ sequenceDiagram
 - 配对和讲话优先；Mac断开仍可通过Wi-Fi展示内容，Mac指标过期显示未知。云端网络错误不能卡住音频采集和主屏幕循环。
 - 发布先API、后Mac/固件；固件烧录和浏览器登录由用户授权/操作，构建通过不代表真机性能或实际授权通过。
 
-验证入口与实际证据见[需求](requirements/desk-workbench-2026-11-05/README.md)与[验收表](requirements/desk-workbench-2026-11-05/acceptance.md)。
+验证入口与实际证据见[需求](archive/requirements/desk-workbench-2026-11-05/README.md)与[验收表](archive/requirements/desk-workbench-2026-11-05/acceptance.md)。

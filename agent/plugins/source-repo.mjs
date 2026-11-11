@@ -39,7 +39,7 @@ export function createSourceRepo(params) {
   return {
     async execute({ node, run, config }) {
       const workspace = config.workspace;
-      const manifestCandidates = ['mac/Package.swift', 'firmware/CMakeLists.txt', 'package.json'];
+      const manifestCandidates = ['apps/macos/Package.swift', 'firmware/CMakeLists.txt', 'package.json'];
       return {
         outputs: {
           repo: {

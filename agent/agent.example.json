@@ -32,8 +32,8 @@
   },
   "verify": {
     "commands": [
-      { "command": "swift", "args": ["test"], "cwd": "mac", "timeoutMs": 600000 },
-      { "command": "swift", "args": ["build", "-c", "release"], "cwd": "mac", "timeoutMs": 600000 }
+      { "command": "swift", "args": ["test"], "cwd": "apps/macos", "timeoutMs": 600000 },
+      { "command": "swift", "args": ["build", "-c", "release"], "cwd": "apps/macos", "timeoutMs": 600000 }
     ]
   },
   "wiki": {

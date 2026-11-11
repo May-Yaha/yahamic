@@ -7,8 +7,9 @@ firmware/.cache/
 firmware/backups/
 
 # Swift
-mac/.build/
-mac/.swiftpm/
+apps/*/.build/
+apps/*/.swiftpm/
+__pycache__/
 
 # 出厂固件备份(刷机前自动生成,不要提交)
 flash-backup-*.bin
@@ -21,7 +22,7 @@ agent/agent.json
 
 # macOS
 .DS_Store
-mac/build/
+apps/macos/build/
 firmware/tools/fonts/*.otf
 
 # ZCode/工作流本地状态(会话计划、任务暂存)

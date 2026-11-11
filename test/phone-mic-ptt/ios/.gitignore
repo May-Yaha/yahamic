@@ -1,0 +1,4 @@
+# xcodegen 生成
+Info.plist
+PhoneMicPTT.entitlements
+*.xcodeproj/

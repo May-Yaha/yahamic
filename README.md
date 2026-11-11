@@ -124,7 +124,7 @@ Yaha Desk 收下解码后写进 BlackHole,系统里看到的麦克风是 BlackHo
 ## 目录结构
 
 ```
-yahadesk/
+yahamic/
 ├── firmware/                 # ESP32-S3 固件(ESP-IDF 6.1)
 │   ├── main/
 │   │   ├── main.cpp          # 30 Hz 主循环:按键(静音)、屏幕、状态日志
@@ -138,14 +138,25 @@ yahadesk/
 │   │   └── generated/fonts/  # 屏幕中文字体子集(tools/make_fonts.sh 生成)
 │   ├── sdkconfig.defaults / partitions.csv / CMakeLists.txt
 │   └── main/Kconfig.projbuild          # CONFIG_YAHADESK_SELFTEST(台架自检)
-├── ios/                      # iPhone App(SwiftUI,iOS 26):设备状态、远程静音、录音回放
-├── mac/                      # Yaha Desk 菜单栏 App(Swift 6.2+,macOS 26)
-│   ├── Sources/COpus/        # libopus 的系统库模块
-│   ├── Sources/DeskProtocol/  # 纯逻辑:GATT UUID、audio 分片重组、写入载荷、key value 行(可单测)
-│   ├── Sources/DeskCore/  # Link(CoreBluetooth 链路/Opus)、Audio、Input(Fn)、Metrics
-│   ├── Sources/YahaDesk/     # 菜单栏 App:App / Model / Services(控制接口、云端同步、BlackHole 安装)/ Views
-│   └── Tests/DeskProtocolTests/
-├── docs/architecture.md      # 模块图、依赖方向、协议 v3 时序
+├── apps/                     # 各端应用(以后的 Android 也放这里)
+│   ├── shared/               # macOS 与 iOS 共用的 Swift 包
+│   │   ├── Sources/DeskProtocol/  # 纯逻辑:GATT UUID、audio 分片重组、写入载荷、key value 行(可单测)
+│   │   └── Sources/DeskShared/    # 网盘登录/文件、DMS、云端授权、录音回放与 AI 整理
+│   ├── macos/                # Yaha Desk 菜单栏 App(Swift 6.2+,macOS 26)
+│   │   ├── Sources/COpus/    # libopus 的系统库模块
+│   │   ├── Sources/DeskCore/ # Link(CoreBluetooth 链路/Opus)、Audio、Input(Fn)、Flash、Metrics
+│   │   ├── Sources/YahaDesk/ # 菜单栏 App:App / Model / Services(控制接口、云端同步、BlackHole 安装)/ Views
+│   │   ├── Tests/            # DeskProtocolTests、YahaDeskTests
+│   │   └── scripts/          # 打包(make-app.sh、make-icon.swift)与语音识别评测(asr_cer.py、audio_quality*)
+│   └── ios/                  # iPhone App(SwiftUI,iOS 26):设备状态、远程静音、录音回放;project.yml 由 XcodeGen 生成工程
+├── test/                     # demo 与可行性验证(不进产品与 CI),见 test/README.md
+├── agent/                    # yahamic-agent 编码工作流与技能
+├── docs/
+│   ├── architecture.md       # 模块图、依赖方向、协议 v3 时序
+│   ├── cloud-contract.md  domain-glossary.md
+│   ├── requirements/         # 近两天的需求与验收记录
+│   ├── archive/              # 归档:更早的需求(requirements/)与报告、审计、迁移记录(reports/)
+│   └── media/
 └── LICENSES/THIRD_PARTY_NOTICES.md
 ```
 
@@ -157,7 +168,7 @@ yahadesk/
 
 ```bash
 # 打包并安装 Yaha Desk(菜单栏 App,无 Dock 图标)
-cd mac && ./scripts/make-app.sh --install
+cd apps/macos && ./scripts/make-app.sh --install
 ```
 
 不想自己构建:到 GitHub Releases 下载 Developer ID 签名并公证的 zip(`./scripts/make-app.sh devid` 产出)。
@@ -180,7 +191,7 @@ cd mac && ./scripts/make-app.sh --install
 到 系统设置 → 隐私与安全性 → 辅助功能 勾选 Yaha Desk 即可。日志在
 `~/Library/Logs/YahaDesk.log`。
 
-> 麦克风状态由 `mac/Sources/YahaDesk/Model/HomeDevice.swift` 中的 `MicDevice` 描述，
+> 麦克风状态由 `apps/macos/Sources/YahaDesk/Model/HomeDevice.swift` 中的 `MicDevice` 描述，
 > 设备链路、音频出口与 Fn 监听在 `DeskCore` 库里。
 
 ### 2. 固件构建与刷写
@@ -286,7 +297,7 @@ Codex(桌面 App 的输入框或终端里的 CLI)不需要额外插件:用 macOS
 ## 压力测试报告
 
 完整压测报告(音频链路/渲染/采集/听写问题定位/UI 验收)在 yahamic 仓库的
-`docs/stress-report-2026-11-01.md`,全部数据经控制接口自动采集。控制接口另有 `dump` 命令:设备经串口回传一帧降采样屏幕,
+`docs/archive/reports/stress-report-2026-11-01.md`,全部数据经控制接口自动采集。控制接口另有 `dump` 命令:设备经串口回传一帧降采样屏幕,
 可远程"看"设备 UI(固件日志输出 SCR 行,`firmware/tools` 侧可重建 PNG)。
 
 ## 本机控制接口(压测与远程排障)
@@ -294,7 +305,7 @@ Codex(桌面 App 的输入框或终端里的 CLI)不需要额外插件:用 macOS
 App 内置本机控制接口:Unix socket `~/Library/Application Support/YahaDesk/control.sock`
 (目录 0700、socket 0600,并用 `getpeereid` 校验同一用户),每行一个 JSON 请求、一行
 JSON 回复;单行上限 64 KB、最多 4 个并发连接、5 秒读超时。命令处理见
-`mac/Sources/YahaDesk/Services/ControlServer.swift` 与 `Model/HomeModel+Control.swift`:
+`apps/macos/Sources/YahaDesk/Services/ControlServer.swift` 与 `Model/HomeModel+Control.swift`:
 
 ```bash
 printf '{"cmd":"status"}\n' | nc -U ~/Library/Application\ Support/YahaDesk/control.sock
@@ -327,7 +338,7 @@ GB2312 一级字(3755 字)、ASCII 与常用中文标点,云端卡片的任意�
 v3 与 v2 不兼容；当前 0.2.0 在 v3 上增加能力行和特征，保留旧音频与10字节dashboard。
 配网需要 0.2.0 以上固件，Mac 对缺少能力的设备显示不支持。时序图与模块关系见
 [docs/architecture.md](docs/architecture.md);实现在 `firmware/main/uplink.cpp` 与
-`mac/Sources/DeskProtocol/Wire.swift`、`mac/Sources/DeskCore/Link/Uplink.swift`。
+`apps/shared/Sources/DeskProtocol/Wire.swift`、`apps/macos/Sources/DeskCore/Link/Uplink.swift`。
 
 一个自定义 service,UUID 为 `9052000N-395E-4621-8E8C-82039EE589FC`(N = 1 是 service,
 2–10 是特征;基址与 yahamic 不同,两者互不连错)。设备主广播包放 service UUID,扫描响应放名字 `yahadesk-XXXX`;只允许一个连接。
@@ -354,7 +365,7 @@ v3 与 v2 不兼容；当前 0.2.0 在 v3 上增加能力行和特征，保留�
   静音状态(按住 Fn 模式为静音,常开模式为开麦)。设备开机默认静音,断链自动静音。
 - 固件保持 ESP-IDF 默认 `WIFI_PS_MIN_MODEM`,不设 `WIFI_PS_NONE`:Wi-Fi 与 BLE 共用一个射频,
   `PS_NONE` 在繁忙 AP 上占满空口,2026-11-07 公司实测 BLE 音频 30 秒只到 27 帧;默认省电模式
-  下 500/500 帧。见 `docs/requirements/desk-wifi-ble-coex-2026-11-07/`。
+  下 500/500 帧。见 `docs/archive/requirements/desk-wifi-ble-coex-2026-11-07/`。
 
 Yaha Desk 默认以 120 ms 为预缓冲与漂移校正目标;渲染端按缓冲水位做 ±0.5% 内的时钟漂移
 微调。链路断开后 Mac 一直挂着连接请求,设备回到范围内由系统自动连上。
@@ -362,8 +373,8 @@ Yaha Desk 默认以 120 ms 为预缓冲与漂移校正目标;渲染端按缓冲�
 ## 云端与桌面工作台
 
 > **云端依赖说明**:工作台总览/告警、设备授权与网盘录音备份依赖作者运营的官方服务 `hub.flyaha.top`
-> 与百度网盘开放平台。地址写在 `firmware/main/cloud.cpp`、`mac/Sources/DeskCore/Link/CloudClient.swift`、
-> `mac/Sources/YahaDesk/Services/PanLogin.swift`;服务端暂不开源,也不支持自建,自行构建的副本连不上这部分功能。
+> 与百度网盘开放平台。地址写在 `firmware/main/cloud.cpp`、`apps/shared/Sources/DeskShared/CloudClient.swift`、
+> `apps/shared/Sources/DeskShared/PanLogin.swift`;服务端暂不开源,也不支持自建,自行构建的副本连不上这部分功能。
 > 不依赖它的部分照常可用:BLE 麦克风、BlackHole 输入、按住讲话、本地转文字(模型下载后可离线)、
 > AI 润色(自填 Key 与接口)、本机控制接口。设备未授权时首页只是不显示工作台入口。
 
@@ -406,14 +417,14 @@ account 为预置 Client ID，valueData 为 UTF-8 密钥；旧 PKCE 项`com.yaha
 
 设备控制与 agent 推卡片 2026-11-06 起只走网盘设备服务（DMS 指令 `get_status`/`mute`/`card`/`unbind`），yahaops 只提供业务数据；`desk_send_card`、`desk_mute` 与旧 `desk_status` 已删除。
 
-iPhone「Yaha 桌面」2026-11-07 起不再靠蓝牙看状态：设备每次 `desk_monitor` 带上固件版本、Wi-Fi 名、静音、Mac 蓝牙和网盘设备服务连接，iPhone 用内置应用登录 Zhi.AI（`desk.status`，只读）后读最近一次上报，3 分钟内有上报算在线；远程静音、卡片与解绑用 iPhone 的网盘令牌经 DMS 下发。蓝牙只在「首次配置」里连接。见[iPhone 云端状态](docs/requirements/desk-ios-cloud-2026-11-07/README.md)。`card` 只下发文字，由固件校验后显示，超过 60 秒的指令过期不补送。
+iPhone「Yaha 桌面」2026-11-07 起不再靠蓝牙看状态：设备每次 `desk_monitor` 带上固件版本、Wi-Fi 名、静音、Mac 蓝牙和网盘设备服务连接，iPhone 用内置应用登录 Zhi.AI（`desk.status`，只读）后读最近一次上报，3 分钟内有上报算在线；远程静音、卡片与解绑用 iPhone 的网盘令牌经 DMS 下发。蓝牙只在「首次配置」里连接。见[iPhone 云端状态](docs/archive/requirements/desk-ios-cloud-2026-11-07/README.md)。`card` 只下发文字，由固件校验后显示，超过 60 秒的指令过期不补送。
 **云端只能静音，不能开麦**；语音与蓝牙配对边界保持原义。0.3.0的验证与人工待验项见
-[桌面工作台需求](docs/requirements/desk-workbench-2026-11-05/README.md)。
+[桌面工作台需求](docs/archive/requirements/desk-workbench-2026-11-05/README.md)。
 
 卡片沿用480×480方屏的深灰圆角通知卡：宽424px、两侧各28px留白，标题与正文左对齐；
 正文压成一行跑马灯（32 px 字体 `font_zh_marquee`，比标题大一号），从右往左循环滚动（放得下就不动），不省略；仅有标题时不预留正文空块。
 卡片下方一排按钮：上一篇 / 慢 中 快 / 下一篇，速度档存在设备上，重启沿用。电量与连接状态在卡片外底部。
-布局与验收记录见[方屏通知卡](docs/requirements/desk-notification-card-2026-11-03/README.md)。
+布局与验收记录见[方屏通知卡](docs/archive/requirements/desk-notification-card-2026-11-03/README.md)。
 云端状态可用控制接口 `cloud` 命令查看。
 
 ## 安全模型
@@ -445,7 +456,7 @@ iPhone「Yaha 桌面」2026-11-07 起不再靠蓝牙看状态：设备每次 `de
 
 - 协议 v3（BLE）的历史构建记录不能证明本次无线共存性能；真机配对、压测、
   断链重连与长静音回归待复验。上面的「已验证」条目和前文压测数据都来自 Wi-Fi 版本。
-- 0.3.0 桌面工作台的验证状态见[验收表](docs/requirements/desk-workbench-2026-11-05/acceptance.md)；触摸、内存水位与无线共存待真机复验。0.2.0 轮播（已删除）的测试、构建、兼容与上线状态记录在[验证记录](docs/requirements/desk-carousel-2026-11-03/verification.md)，不沿用历史压测结论。
+- 0.3.0 桌面工作台的验证状态见[验收表](docs/archive/requirements/desk-workbench-2026-11-05/acceptance.md)；触摸、内存水位与无线共存待真机复验。0.2.0 轮播（已删除）的测试、构建、兼容与上线状态记录在[验证记录](docs/archive/requirements/desk-carousel-2026-11-03/verification.md)，不沿用历史压测结论。
 - 设备只接受一个连接:Mac 不在线时,别的设备连上会占住链路(配不上对就一直停在配对屏),
   断开后恢复广播。
 
@@ -456,7 +467,7 @@ iPhone「Yaha 桌面」2026-11-07 起不再靠蓝牙看状态：设备每次 `de
 **联调中踩过并修掉的坑(供后来者,含系统升级;Wi-Fi 相关几条来自 0.4.0 及以前)**:
 
 - **Fn 键(macOS 26)不再设置 SecondaryFn 修饰位**,只以键码 63 上报——监听要同时
-  覆盖 flagsChanged 与 keyDown/keyUp 的键码 63(mac/Sources/DeskCore/FnListener.swift)。
+  覆盖 flagsChanged 与 keyDown/keyUp 的键码 63(apps/macos/Sources/DeskCore/FnListener.swift)。
 - **CGEventTap 用 `.cghidEventTap + listenOnly` 出现过"创建成功但零事件"** → 改
   `.cgSessionEventTap + defaultTap`(回调须原样返回事件);C 回调不捕获上下文,
   监听器实例必须全局持有(if-let 块内释放 = 野指针 = bus error)。

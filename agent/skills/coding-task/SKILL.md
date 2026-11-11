@@ -7,7 +7,7 @@ description: 用 yahamic-agent 微内核执行 yahamic 仓库的编码任务（�
 
 ## 意图触发
 
-- 用户要求修改 yahamic 仓库（firmware/ 或 mac/）的代码、修 bug、加功能
+- 用户要求修改 yahamic 仓库（firmware/ 或 apps/macos/）的代码、修 bug、加功能
 - 用户提到"用 agent 微内核 / 图工作流跑一下这个任务"
 - 用户要求带验证与知识沉淀的自动化编码
 
@@ -34,9 +34,9 @@ description: 用 yahamic-agent 微内核执行 yahamic 仓库的编码任务（�
 ## 领域事实（写给决策与排障）
 
 - Mac 端有 `YahaDeskTests` 与 `DeskProtocolTests`：至少执行 `swift test` 和 `swift build -c release`；本地听写改动另跑 `swift test --filter LocalDictationTests`。
-- iOS 工程由 `ios/project.yml` 生成；验证使用 XcodeGen + `xcodebuild`，不能把 Mac 测试通过当成 iOS 已验证。
+- iOS 工程由 `apps/ios/project.yml` 生成；验证使用 XcodeGen + `xcodebuild`，不能把 Mac 测试通过当成 iOS 已验证。
 - 固件验证 = `idf.py build` 与 `firmware/tests/README.md` 列出的 host tests，需先加载 ESP-IDF 6.1 环境。刷机、量产分区和设备数据动作仍需单独授权。
-- 产品版本以 `firmware/CMakeLists.txt`、`mac/scripts/make-app.sh` 和 `ios/project.yml` 三端一致为准（当前 0.3.0）。
+- 产品版本以 `firmware/CMakeLists.txt`、`apps/macos/scripts/make-app.sh` 和 `apps/ios/project.yml` 三端一致为准（当前 0.3.0）。
 - 当前音频主链路为 ESP32-S3 BLE GATT Opus → `DeskCore` → BlackHole；云端内容走 Wi-Fi，不能恢复已删除的 Wi-Fi 音频 daemon。
 - 本地听写复用同一 Fn、PCM capture 与最终文字写入链路；Qwen3-ASR 模型权重是本机缓存，不进入 Git。
 - Codex 子进程走本机代理 `http://127.0.0.1:7890`（配置于 `agent/agent.json`）
@@ -46,7 +46,7 @@ description: 用 yahamic-agent 微内核执行 yahamic 仓库的编码任务（�
 ## 敏感边界（清理/重构前必读）
 
 - `mic_state` 是静音唯一状态入口；按键、Mac 遥控和断链都必须汇合到这里，不能旁路开麦。
-- BLE 配对、音频分片、Ogg/Opus 录音、DMS 出厂身份与 Wi-Fi 配置都已有回归测试；清理前先查 `docs/requirements/` 与 `firmware/tests/README.md`。
+- BLE 配对、音频分片、Ogg/Opus 录音、DMS 出厂身份与 Wi-Fi 配置都已有回归测试；清理前先查 `docs/requirements/`、`docs/archive/requirements/` 与 `firmware/tests/README.md`。
 - `fac` 出厂身份、NVS 中的网络/配对/授权信息和百度网盘令牌不可随普通固件更新擦除；一键安装固件只写版本不同的程序相关分区。
 - `desk_prepare_device` 只准备 OAuth 应用，不等于授权；token 只进入系统钥匙串或设备安全存储。
 - 旧 Wi-Fi 版本的审计记录保留在 `docs/`，仅用于历史追溯，不能覆盖当前 BLE 架构事实。
