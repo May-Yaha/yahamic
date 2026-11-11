@@ -52,6 +52,7 @@ final class HomeModel: ObservableObject {
             defaults.set(doubaoEnabled, forKey: "doubao")
             if doubaoEnabled, localSTTEnabled { localSTTEnabled = false }
             if doubaoEnabled, !pttEnabled { pttEnabled = true }
+            if doubaoEnabled, oldValue != doubaoEnabled, ActiveInputMethod.selectDoubao() { log("已切到豆包输入法") }
         }
     }
     var doubaoInstalled: Bool { ActiveInputMethod.doubaoInstalled }  // 每次读都查,装完不用重启
@@ -69,6 +70,29 @@ final class HomeModel: ObservableObject {
             defaults.set(ownVoiceOnly, forKey: "ownVoiceOnly")
             applyOwnVoice()
         }
+    }
+    /// 声源:false = 桌面设备,true = 打开了「手机当麦克风」的 iPhone。切换即重建链路,两者同时只连一个。
+    /// 不持久化:启动先连设备,iPhone 上开/关会自动跟着切(见 phoneMicChanged);界面切换走 selectSource。
+    @Published private(set) var phoneMic = false {
+        didSet { if started, !mic.paused, oldValue != phoneMic { startUplink() } }
+    }
+    /// 手机还开着时在 Mac 上切回设备:这台手机这次就不再自动接管,等它停了再说。
+    private var phoneDismissed = false
+
+    func selectSource(phone: Bool) {
+        if !phone, phoneMic, mic.isOnline { phoneDismissed = true }
+        phoneMic = phone
+    }
+
+    private func phoneMicChanged(_ on: Bool) {
+        guard on else {
+            phoneDismissed = false
+            if phoneMic { log("iPhone 停止了手机当麦克风,声源切回设备"); phoneMic = false }
+            return
+        }
+        guard !phoneMic, !phoneDismissed else { return }
+        log("iPhone 打开了手机当麦克风,声源切到手机")
+        phoneMic = true
     }
     /// 按住讲话的键。HHKB 的 Fn 不上报 macOS,改选一颗修饰键。
     @Published var talkKey: TalkKey {
@@ -367,7 +391,7 @@ final class HomeModel: ObservableObject {
 
     private func startUplink() {
         uplink?.stop()
-        let link = Uplink(jitter: jitter, verbose: false, pushToTalk: pttEnabled)
+        let link = Uplink(jitter: jitter, verbose: false, pushToTalk: pttEnabled, phone: phoneMic)
         link.audioSink = sink  // 接线:断供事件计数需要「流活跃」标记
         link.onLog = { [weak self] line in
             DispatchQueue.main.async { self?.log(line, stamped: true) }
@@ -381,6 +405,9 @@ final class HomeModel: ObservableObject {
         }
         link.onLevel = { [weak self] db in
             DispatchQueue.main.async { self?.overlay.push(level: db) }
+        }
+        link.onPhoneMic = { [weak self, weak link] on in
+            DispatchQueue.main.async { if let link, self?.uplink === link { self?.phoneMicChanged(on) } }
         }
         uplink = link
         applyOwnVoice()

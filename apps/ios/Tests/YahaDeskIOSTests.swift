@@ -1,10 +1,27 @@
 import DeskProtocol
 import DeskShared
+import AVFoundation
 import XCTest
 @testable import YahaDeskIOS
 
 final class YahaDeskIOSTests: XCTestCase {
     /// 版本号是数字时,真机首个 HTTPS 请求在 CFNetwork 拼 User-Agent 时崩溃。
+    /// 48 kHz 浮点采集缓冲(iPhone 麦克风常见格式)应切成 60 ms 一帧、32 kbps 量级的 Opus,与固件一致。
+    func testMicEncoderEmitsSixtyMillisecondOpusFrames() throws {
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1))
+        let encoder = try XCTUnwrap(MicEncoder(input: format))
+        var frames: [Data] = []
+        var phase = 0.0
+        for _ in 0..<10 {  // 10 × 1024 样本 ≈ 213 ms
+            let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1024))
+            buffer.frameLength = 1024
+            for i in 0..<1024 { buffer.floatChannelData![0][i] = Float(0.3 * sin(phase)); phase += 2 * .pi * 440 / 48000 }
+            frames += encoder.push(buffer)
+        }
+        XCTAssertEqual(frames.count, 3)
+        for f in frames { XCTAssertTrue((60...400).contains(f.count), "\(f.count) B") }
+    }
+
     func testBundleVersionsAreStrings() {
         for key in ["CFBundleVersion", "CFBundleShortVersionString"] {
             XCTAssertTrue(Bundle.main.object(forInfoDictionaryKey: key) is String, key)

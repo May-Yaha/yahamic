@@ -81,3 +81,18 @@ private func packet(_ seq: UInt16, _ frag: UInt8, last: Bool, _ body: [UInt8]) -
     #expect(t.count == Wire.cardMax && t[2 + 508] == 0 && t.last == UInt8(ascii: "b"))
     #expect(Wire.card(ttl: 1, title: "a\0b", body: "").hex == "0100" + "6162" + "00")
 }
+
+@Test func phoneFragmentsRoundTripThroughAssembler() {
+    #expect(Wire.phoneService == "9052000C-395E-4621-8E8C-82039EE589FC")
+    let opus = Data((0..<200).map { UInt8($0 & 0xff) })
+    let parts = Wire.fragments(seq: 0xFFFF, opus: opus, chunk: 17)  // 最小 MTU 23 − 6
+    #expect(parts.count == 12)
+    #expect(parts.dropLast().allSatisfy { $0.count == 20 && $0[2] & 0x80 == 0 })
+    var a = FrameAssembler()
+    _ = a.push(packet(0xFFFE, 0, last: true, [9]))
+    var frame: FrameAssembler.Frame?
+    for p in parts { frame = a.push(p) }
+    #expect(frame == .init(seq: 0xFFFF, gap: 0, opus: opus))  // seq 回绕不算缺口
+    #expect(Wire.fragments(seq: 1, opus: Data(count: 129), chunk: 1).isEmpty)  // 超过 128 片不发
+    #expect(Wire.fragments(seq: 1, opus: Data(), chunk: 17).isEmpty)
+}

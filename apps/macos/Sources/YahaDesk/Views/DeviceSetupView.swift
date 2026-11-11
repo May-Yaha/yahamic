@@ -20,8 +20,14 @@ struct DeviceSetupView: View {
     @State private var zhipuMessage: String?
 
     enum Pane: CaseIterable, Identifiable {
-        case device, firmware, wifi, pan, recordings, labeling, voice, aiPolish, workbench
+        case device, firmware, wifi, voice, aiPolish, labeling, pan, recordings, workbench
         var id: Self { self }
+        /// 侧栏三组:设备本身 → 语音处理 → 云与数据。
+        static let groups: [(title: String, panes: [Pane])] = [
+            ("设备", [.device, .firmware, .wifi]),
+            ("语音", [.voice, .aiPolish, .labeling]),
+            ("云与数据", [.pan, .recordings, .workbench]),
+        ]
         var title: String {
             switch self {
             case .device: "设备"
@@ -52,21 +58,27 @@ struct DeviceSetupView: View {
             switch self {
             case .device: .blue
             case .firmware: .gray
-            case .wifi: .blue
+            case .wifi: .teal
             case .pan: .cyan
             case .recordings: .red
             case .labeling: .green
             case .voice: .purple
             case .aiPolish: .orange
-            case .workbench: .orange
+            case .workbench: .indigo
             }
         }
     }
 
     var body: some View {
         NavigationSplitView {
-            List(Pane.allCases, selection: $pane) { item in
-                Label(item.title, systemImage: item.symbol).labelStyle(.badge(item.color, size: 22)).tag(item)
+            List(selection: $pane) {
+                ForEach(Pane.groups, id: \.title) { group in
+                    Section(group.title) {
+                        ForEach(group.panes) { item in
+                            Label(item.title, systemImage: item.symbol).labelStyle(.badge(item.color, size: 22)).tag(item)
+                        }
+                    }
+                }
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
         } detail: {

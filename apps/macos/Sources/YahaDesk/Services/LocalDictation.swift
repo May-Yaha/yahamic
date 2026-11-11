@@ -20,10 +20,25 @@ enum ActiveInputMethod {
     }
 
     /// 本机装了豆包输入法(含没加进输入法列表的)。
-    static var doubaoInstalled: Bool {
+    static var doubaoInstalled: Bool { !doubaoSources.isEmpty }
+
+    private static var doubaoSources: [TISInputSource] {
         let filter = [kTISPropertyBundleID as String: "com.bytedance.inputmethod.doubaoime"] as CFDictionary
-        let list = TISCreateInputSourceList(filter, true)?.takeRetainedValue() as? [TISInputSource]
-        return !(list ?? []).isEmpty
+        return TISCreateInputSourceList(filter, true)?.takeRetainedValue() as? [TISInputSource] ?? []
+    }
+
+    /// 切到豆包输入法;没加进输入法列表的先加上。已经是豆包或切换失败返回 false。
+    @discardableResult
+    static func selectDoubao() -> Bool {
+        guard !isDoubao(bundleID) else { return false }
+        for source in doubaoSources {
+            guard let raw = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsSelectCapable),
+                  CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(raw).takeUnretainedValue())
+            else { continue }
+            TISEnableInputSource(source)
+            if TISSelectInputSource(source) == noErr { return true }
+        }
+        return false
     }
 }
 

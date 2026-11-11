@@ -20,6 +20,11 @@ targets:
       - Sources
       # 图标由 ../macos/scripts/make-icon.swift <png> ios 生成(无 alpha,满幅)。
       - Assets.xcassets
+    entitlements:
+      path: YahaDeskIOS.entitlements
+      properties:
+        com.apple.developer.push-to-talk: true
+        aps-environment: development  # PushToTalk 要求开推送;手机麦克风不走推送
     info:
       path: Info.plist
       properties:
@@ -31,7 +36,10 @@ targets:
         UILaunchScreen: {}
         # 折叠屏展开、横放都要能用:放开横屏,宽屏下左右分栏(见 ContentView)。
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
-        NSBluetoothAlwaysUsageDescription: Yaha Desk 在切换 Wi-Fi 和设备管理页通过蓝牙给桌面设备切换网络、绑定网盘，不采集音频。
+        NSBluetoothAlwaysUsageDescription: Yaha Desk 通过蓝牙给桌面设备切换网络、绑定网盘；打开“手机当麦克风”后，还经蓝牙接收 Mac 的讲话键并把声音传给 Mac。
+        NSMicrophoneUsageDescription: 打开“手机当麦克风”后，按住 Mac 讲话键时采集声音，经蓝牙加密传给你的 Mac，不上传云端。
+        # 锁屏后讲话键仍能开始采集(验证见 test/phone-mic-ptt)。
+        UIBackgroundModes: [audio, push-to-talk, bluetooth-peripheral]
         NSRemindersFullAccessUsageDescription: Yaha Desk 把工作总结里的待办加入提醒事项，只新建条目，不读取已有提醒。
         ITSAppUsesNonExemptEncryption: false
     settings:

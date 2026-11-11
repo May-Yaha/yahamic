@@ -105,8 +105,15 @@ public final class Uplink: NSObject, @unchecked Sendable {
         get { queue.sync { ptt } }
         set { queue.sync { ptt = newValue } }
     }
+    /// 手机麦克风开关:设备模式下配对过的 iPhone 开始广播报 true、5 秒没再看到报 false;
+    /// 手机模式下 iPhone 撤掉服务(点了停止)报 false。在内部串行队列上回调。
+    public var onPhoneMic: ((Bool) -> Void)? {
+        get { queue.sync { phoneHandler } }
+        set { queue.sync { phoneHandler = newValue } }
+    }
 
     private var stateHandler: ((State) -> Void)?
+    private var phoneHandler: ((Bool) -> Void)?
     private var logHandler: ((String) -> Void)?
     private var tapHandler: ((Data) -> Void)?
     private var playbackHandler: ((Data) -> Void)?
@@ -118,7 +125,11 @@ public final class Uplink: NSObject, @unchecked Sendable {
     private let jitter: JitterBuffer
     private let verbose: Bool
     private let queue = DispatchQueue(label: "yahadesk.uplink")
-    private static let rememberedKey = "yahadesk.peripheral"
+    /// 声源:桌面设备,或打开了「手机当麦克风」的 iPhone(另一个 service,只有 info/audio/status/control)。
+    private let service: CBUUID
+    private let rememberedKey: String
+    private let phone: Bool
+    private var phoneSeenAt: Date?  // 设备模式下最近一次看到配对过的 iPhone 广播手机麦克风
 
     private var central: CBCentralManager?
     private var timer: DispatchSourceTimer?
@@ -150,10 +161,13 @@ public final class Uplink: NSObject, @unchecked Sendable {
     private var levelDb = -120.0
     private var fps = 0
 
-    public init(jitter: JitterBuffer, verbose: Bool, pushToTalk: Bool = true) {
+    public init(jitter: JitterBuffer, verbose: Bool, pushToTalk: Bool = true, phone: Bool = false) {
         self.jitter = jitter
         self.verbose = verbose
         self.ptt = pushToTalk
+        self.phone = phone
+        service = CBUUID(string: phone ? Wire.phoneService : Wire.service)
+        rememberedKey = phone ? "yahadesk.phone" : "yahadesk.peripheral"
         super.init()
     }
 
@@ -301,6 +315,10 @@ public final class Uplink: NSObject, @unchecked Sendable {
     // MARK: - 状态
 
     private func tick() {
+        if let seen = phoneSeenAt, Date().timeIntervalSince(seen) > 5 {
+            phoneSeenAt = nil
+            phoneHandler?(false)
+        }
         guard live, let peripheral else { return }
         peripheral.readRSSI()
         updateMetrics()
@@ -389,7 +407,7 @@ public final class Uplink: NSObject, @unchecked Sendable {
         muted = true  // 设备上线默认静音,随后的 status 会报真实状态
         frames = 0
         lastAnomalyLogAt = Date()  // 上线后 10s 宽限:等静音同步与首帧,避免误报断流
-        UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: Self.rememberedKey)
+        UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: rememberedKey)
         log("🎤 \(peripheral.name ?? "yahadesk") 上线(蓝牙已加密)")
         if ptt { log("按住讲话键讲话,松开静音") }
         // 上线即同步模式:push-to-talk 先静音,常开模式开麦。
@@ -462,20 +480,30 @@ public final class Uplink: NSObject, @unchecked Sendable {
     // MARK: - 连接管理
 
     private var remembered: UUID? {
-        UserDefaults.standard.string(forKey: Self.rememberedKey).flatMap(UUID.init(uuidString:))
+        UserDefaults.standard.string(forKey: rememberedKey).flatMap(UUID.init(uuidString:))
+    }
+    /// 设备模式下留意的 iPhone:只认配对过(当过声源)的那台,没配过就不额外扫描。
+    private var watchedPhone: UUID? {
+        phone ? nil : UserDefaults.standard.string(forKey: "yahadesk.phone").flatMap(UUID.init(uuidString:))
     }
     private var connectingSince = Date.distantPast
     private var reportedError = false
 
-    /// 未上线时一直扫描(允许重复上报,换设备时才能在超时后再次看到它);上线即停。
+    /// 未上线时一直扫描(允许重复上报,换设备时才能在超时后再次看到它);上线后只留意手机麦克风。
     private func connectOrScan() {
         guard let central, central.state == .poweredOn else { return }
         if peripheral == nil, let id = remembered,
            let p = central.retrievePeripherals(withIdentifiers: [id]).first {
             connect(p)
         }
-        central.scanForPeripherals(withServices: [CBUUID(string: Wire.service)],
-                                   options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
+        scan(live ? [] : [service])
+    }
+
+    private func scan(_ services: [CBUUID]) {
+        let services = services + (watchedPhone == nil ? [] : [CBUUID(string: Wire.phoneService)])
+        central?.stopScan()
+        guard !services.isEmpty else { return }
+        central?.scanForPeripherals(withServices: services, options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
     }
 
     /// connect 没有超时:设备不在范围内时挂起,回来后系统自动连上。
@@ -549,6 +577,16 @@ extension Uplink: CBCentralManagerDelegate {
 
     public func centralManager(_ central: CBCentralManager, didDiscover p: CBPeripheral,
                                advertisementData: [String: Any], rssi: NSNumber) {
+        let phoneService = CBUUID(string: Wire.phoneService)
+        // iPhone 退到后台时服务 UUID 改放在 overflow 区。
+        let advertised = [CBAdvertisementDataServiceUUIDsKey, CBAdvertisementDataOverflowServiceUUIDsKey]
+            .flatMap { advertisementData[$0] as? [CBUUID] ?? [] }
+        if !phone, advertised.contains(phoneService) {
+            guard p.identifier == watchedPhone else { return }  // 别人的或没配过的 iPhone 不理
+            if phoneSeenAt == nil { phoneHandler?(true) }
+            phoneSeenAt = Date()
+            return
+        }
         if let current = peripheral {
             guard current.state != .connected, p.identifier != current.identifier else { return }
             // 记住的设备优先;它 5 秒没连上(不在附近)才换成新发现的设备。
@@ -561,7 +599,7 @@ extension Uplink: CBCentralManagerDelegate {
 
     public func centralManager(_ central: CBCentralManager, didConnect p: CBPeripheral) {
         guard p === peripheral else { return }
-        p.discoverServices([CBUUID(string: Wire.service)])
+        p.discoverServices([service])
     }
 
     public func centralManager(_ central: CBCentralManager, didFailToConnect p: CBPeripheral, error: Error?) {
@@ -574,6 +612,7 @@ extension Uplink: CBCentralManagerDelegate {
                                error: Error?) {
         guard p === peripheral else { return }
         if let error, (error as? CBError)?.code == .peerRemovedPairingInformation { report("连接", error) }
+        if phone, live { phoneHandler?(false) }  // iPhone 点了停止或走远:交回设备,它还在广播会再切回来
         dropActive(error?.localizedDescription ?? "已断开")
         connect(p)
         connectOrScan()
@@ -583,14 +622,14 @@ extension Uplink: CBCentralManagerDelegate {
 extension Uplink: CBPeripheralDelegate {
     /// The device sends Service Changed after each boot; reconnecting rediscovers the new table.
     public func peripheral(_ p: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
-        guard p === peripheral, invalidatedServices.contains(where: { $0.uuid == CBUUID(string: Wire.service) }) else { return }
+        guard p === peripheral, invalidatedServices.contains(where: { $0.uuid == service }) else { return }
         log("设备服务表已更新，重新连接")
         central?.cancelPeripheralConnection(p)
     }
 
     public func peripheral(_ p: CBPeripheral, didDiscoverServices error: Error?) {
         guard p === peripheral else { return }
-        guard let service = p.services?.first(where: { $0.uuid == CBUUID(string: Wire.service) }) else {
+        guard let service = p.services?.first(where: { $0.uuid == self.service }) else {
             if let error { report("发现服务", error) }
             return
         }
@@ -621,8 +660,8 @@ extension Uplink: CBPeripheralDelegate {
         if let error { return report("订阅", error) }
         if c.uuid == CBUUID(string: Wire.status), c.isNotifying { p.readValue(for: c) }
         if c.uuid == CBUUID(string: Wire.audio), c.isNotifying, !live {
-            central?.stopScan()
             goLive()
+            scan([])
         }
     }
 

@@ -41,7 +41,8 @@ extension HomeModel {
     func handleTalkKey(_ down: Bool, name: String) {
         // 豆包模式:豆包有自己的语音浮层和识别,这边只送声(经 BlackHole),不弹浮层、不转文字
         if doubaoEnabled {
-            if down, !ActiveInputMethod.isDoubao(ActiveInputMethod.bundleID) { log("⚠️ 豆包模式:当前输入法不是豆包,先切到豆包") }
+            // 中途被切到别的输入法:按下时自动切回豆包,不用自己去菜单栏找。
+            if down, ActiveInputMethod.selectDoubao() { log("豆包模式:输入法已切到豆包") }
         } else {
             overlay.setKey(down, online: mic.isOnline, muted: mic.state.muted)
             if down { beginLocalDictation() } else { requestLocalDictationStop() }

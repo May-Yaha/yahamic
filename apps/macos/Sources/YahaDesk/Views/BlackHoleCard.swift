@@ -9,20 +9,20 @@ struct BlackHoleCard: View {
     @State private var copied = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PanelSpacing.row) {
             Label("还差一步:安装虚拟麦克风 BlackHole", systemImage: "waveform.badge.plus")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(MenuStatusTint.warning.color)
             Text("设备的声音经 BlackHole 交给其他应用(听写、会议、录音)。免费开源,约 100 KB,只需装一次。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
+            HStack(spacing: PanelSpacing.row) {
                 Button(action: onInstall) {
                     Text(state.busy ? "安装中…" : "一键安装")
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .tint(MenuStatusTint.warning.color)
                 .controlSize(.small)
                 .disabled(state.busy)
                 if state.busy {
@@ -32,7 +32,7 @@ struct BlackHoleCard: View {
             }
             if case .failed(let why) = state {
                 Label(why, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption).foregroundStyle(.orange)
+                    .font(.caption).foregroundStyle(MenuStatusTint.warning.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
             DisclosureGroup {
@@ -41,8 +41,7 @@ struct BlackHoleCard: View {
                 Text("改用终端安装").font(.caption).foregroundStyle(.secondary)
             }
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.orange.opacity(0.12)))
+        .noticeTile()
     }
 
     private var terminalInstall: some View {

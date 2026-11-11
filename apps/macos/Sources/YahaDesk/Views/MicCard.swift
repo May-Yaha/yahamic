@@ -8,6 +8,8 @@ struct MicCard: View {
     let pttEnabled: Bool
     let fnAvailable: Bool
     let talkKeyName: String
+    let phoneMic: Bool
+    let onSelectSource: (Bool) -> Void
     let onToggleMute: () -> Void
     let onSetPaused: (Bool) -> Void
     let onReconnect: () -> Void
@@ -59,7 +61,7 @@ struct MicCard: View {
                 .help(device.state.muted ? "开麦" : "静音")
                 .accessibilityLabel(device.state.muted ? "开麦" : "静音")
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(device.title).font(.headline)
+                    Text(phoneMic ? "手机麦克风" : device.title).font(.headline)
                     Text(statusWord).font(.subheadline.weight(.semibold)).foregroundStyle(statusTint.color)
                 }
                 Spacer()
@@ -86,6 +88,14 @@ struct MicCard: View {
                 .accessibilityLabel(device.paused ? "恢复连接" : "暂时断开")
             }
             .animation(.snappy(duration: 0.2), value: statusTint)
+            // 声源一键切换;iPhone 上点开/停止也会自动跟过来(见 HomeModel.phoneMicChanged)。
+            Picker("声源", selection: Binding(get: { phoneMic }, set: onSelectSource)) {
+                Label("设备", systemImage: "mic.fill").tag(false)
+                Label("手机", systemImage: "iphone.gen3").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .disabled(device.paused)
             levelBar
             if let audioError {
                 Label(audioError, systemImage: "exclamationmark.triangle.fill")
@@ -110,6 +120,9 @@ struct MicCard: View {
 
     /// 底部一行:离线给连接指引,在线给 Fn 提示,送声时给电平与帧率。
     private var hint: String {
+        if phoneMic, !device.isOnline, !device.paused {
+            return "在 iPhone 的 Yaha Desk 首页把声源切到“手机”;首次连接两边确认配对"
+        }
         guard device.isOnline, !device.paused else { return device.statusLine }
         if !device.state.muted { return device.statusLine }
         return pttEnabled && fnAvailable ? "按住 \(talkKeyName) 开始讲话" : "点左侧图标开麦"

@@ -16,7 +16,7 @@ struct ContentView: View {
                 }
             } else {
                 TabView {
-                    Tab("设备", systemImage: "mic.circle") { NavigationStack { HomeView() } }
+                    Tab("首页", systemImage: "mic.circle") { NavigationStack { HomeView() } }
                     Tab("录音", systemImage: "waveform") { NavigationStack { RecordingsView() } }
                 }
             }
@@ -35,82 +35,107 @@ struct ContentView: View {
     }
 }
 
-/// 首页：先看状态，再做三件常用事（切 Wi-Fi、静音、发卡片）；一次性配置与账号放下面。
+/// 首页：顶部选声源（设备 / 手机），下面整页只讲选中的那个；设备页再做三件常用事（切 Wi-Fi、静音、发卡片）。
 struct HomeView: View {
     @EnvironmentObject private var cloud: CloudStore
     @EnvironmentObject private var recordings: RecordingStore
+    @EnvironmentObject private var phoneMic: PhoneMic
     @State private var composing = false
+    @AppStorage("homePhoneSource") private var phoneSource = false
 
     var body: some View {
         List {
-            Section { statusCard } footer: { statusFooter }
-            Section {
-                NavigationLink { WiFiView() } label: {
-                    LabeledContent { Text(cloud.status?.ssid ?? "") } label: {
-                        Label("切换 Wi-Fi", systemImage: "wifi").labelStyle(.badge(.blue))
-                    }
+            Section { sourcePicker }.listSectionSpacing(.compact)
+            if phoneSource { phoneSections } else { deviceSections }
+            Section("账号") {
+                if !phoneSource {
+                    account("Zhi.AI", systemImage: "person.fill", color: .indigo, loggedIn: cloud.loggedIn, busy: cloud.busy,
+                            login: { await cloud.login() }, logout: cloud.logout)
                 }
-                Group {
-                    Button { Task { await cloud.mute(panToken: recordings.token) } } label: {
-                        Label("静音", systemImage: "mic.slash.fill").labelStyle(.badge(.red))
-                    }
-                    .disabled(remoteBlocked != nil || cloud.busy || cloud.status?.muted == true)
-                    Button { composing = true } label: {
-                        Label("发送卡片", systemImage: "rectangle.on.rectangle").labelStyle(.badge(.orange))
-                    }
-                    .disabled(remoteBlocked != nil)
-                }
-                .foregroundStyle(remoteBlocked == nil ? Color.primary : Color.secondary)  // 列表里禁用的按钮文字不会自动变灰
-            } header: { Text("常用") } footer: {
-                Text(remoteBlocked ?? "静音与卡片经网盘设备服务下发，不用靠近设备；远程只能静音，不能开麦。")
-            }
-            Section("设备与账号") {
-                NavigationLink { DeviceManageView() } label: { Label("设备管理", systemImage: "gearshape.fill").labelStyle(.badge(.gray)) }
-                NavigationLink { AISettingsView() } label: { Label("AI 总结", systemImage: "sparkles").labelStyle(.badge(.purple)) }
-                account("Zhi.AI", systemImage: "person.fill", color: .indigo, loggedIn: cloud.loggedIn, busy: cloud.busy,
-                        login: { await cloud.login() }, logout: cloud.logout)
                 account("百度网盘", systemImage: "externaldrive.fill", color: .cyan, loggedIn: recordings.token != nil, busy: recordings.busy,
                         login: { await recordings.login() }, logout: recordings.logout)
             }
         }
         .navigationTitle("Yaha Desk")
-        .refreshable { await cloud.refresh() }
+        .refreshable { if !phoneSource { await cloud.refresh() } }
         .task { await recordings.renew(); await cloud.refresh() }
         .sheet(isPresented: $composing) { CardSheet() }
         .safeAreaInset(edge: .bottom) { Banner(text: cloud.message.isEmpty ? recordings.message : cloud.message) }
+        .animation(.snappy, value: phoneSource)
+        .onChange(of: phoneMic.joined) { _, joined in if joined { phoneSource = true } }  // 系统恢复了频道
+    }
+
+    /// 手机当麦克风:只讲手机自己,不出现设备状态、远程控制和 Zhi.AI(没有设备的用户也能用)。
+    @ViewBuilder private var phoneSections: some View {
+        Section {
+            if phoneMic.joined {
+                // 讲话绿、Mac 已连接蓝、等待 Mac 灰。
+                hero(symbol: phoneMic.talking ? "mic.fill" : "iphone.gen3",
+                     tint: phoneMic.talking ? .green : phoneMic.macLinked ? .blue : .gray, lit: phoneMic.macLinked,
+                     title: phoneMic.talking ? "讲话中" : phoneMic.macLinked ? "Mac 已连接" : "等待 Mac",
+                     detail: phoneMic.macLinked ? "按住 Mac 的讲话键讲话，锁屏也能用" : "在 Mac 菜单把声源切到“手机”，首次连接两边确认配对")
+            } else {
+                VStack(spacing: 12) {
+                    hero(symbol: "iphone.gen3", tint: .gray, lit: false, title: "手机麦克风未开启",
+                         detail: "开启后 Mac 把手机当麦克风用，锁屏也能讲话")
+                    Button("开启") { phoneMic.toggle() }.buttonStyle(.borderedProminent)
+                }
+                .listRowBackground(Color.clear)
+            }
+        } footer: {
+            if !phoneMic.message.isEmpty { Text(phoneMic.message) }
+        }
+        Section("设置") { aiSummaryLink }
+    }
+
+    @ViewBuilder private var deviceSections: some View {
+        Section { statusCard } footer: { statusFooter }
+        Section {
+            NavigationLink { WiFiView() } label: {
+                LabeledContent { Text(cloud.status?.ssid ?? "") } label: {
+                    Label("切换 Wi-Fi", systemImage: "wifi").labelStyle(.badge(.blue))
+                }
+            }
+            Group {
+                Button { Task { await cloud.mute(panToken: recordings.token) } } label: {
+                    Label("静音", systemImage: "mic.slash.fill").labelStyle(.badge(.red))
+                }
+                .disabled(remoteBlocked != nil || cloud.busy || cloud.status?.muted == true)
+                Button { composing = true } label: {
+                    Label("发送卡片", systemImage: "rectangle.on.rectangle").labelStyle(.badge(.orange))
+                }
+                .disabled(remoteBlocked != nil)
+            }
+            .foregroundStyle(remoteBlocked == nil ? Color.primary : Color.secondary)  // 列表里禁用的按钮文字不会自动变灰
+        } header: { Text("常用") } footer: {
+            Text(remoteBlocked ?? "静音与卡片经网盘设备服务下发，不用靠近设备；远程只能静音，不能开麦。")
+        }
+        Section("设置") {
+            NavigationLink { DeviceManageView() } label: { Label("设备管理", systemImage: "gearshape.fill").labelStyle(.badge(.gray)) }
+            aiSummaryLink
+        }
+    }
+
+    private var aiSummaryLink: some View {
+        NavigationLink { AISettingsView() } label: { Label("AI 总结", systemImage: "sparkles").labelStyle(.badge(.purple)) }
     }
 
     @ViewBuilder private var statusCard: some View {
         if !cloud.loggedIn {
             VStack(alignment: .leading, spacing: 12) {
                 Text("登录后查看设备状态").font(.headline)
-                Text("设备每分钟经 Zhi.AI 上报一次；iPhone 只读状态，不能开麦。").font(.subheadline).foregroundStyle(.secondary)
+                Text("设备每分钟经 Zhi.AI 上报一次。没有设备的话，在上面切到“手机”。").font(.subheadline).foregroundStyle(.secondary)
                 Button("登录 Zhi.AI") { Task { await cloud.login() } }
                     .buttonStyle(.borderedProminent).disabled(cloud.busy)
             }
             .padding(.vertical, 8)
         } else if let status = cloud.status, status.reported {
             // 单一主角:大圆状态 + 状态词 + 一行说明;色与 Mac 菜单一致(开麦绿、静音红、离线灰)。
-            let tint: Color = status.online ? (status.muted ? .red : .green) : .gray
-            VStack(spacing: 12) {
-                Image(systemName: status.online ? (status.muted ? "mic.slash.fill" : "mic.fill") : "mic.slash")
-                    .font(.largeTitle.weight(.semibold)).foregroundStyle(.white)
-                    .frame(width: 104, height: 104)
-                    .background(Circle().fill(tint.gradient))
-                    .padding(8)
-                    .overlay(Circle().strokeBorder(tint.opacity(0.25), lineWidth: 6))
-                    .shadow(color: tint.opacity(status.online ? 0.35 : 0), radius: 16, y: 6)
-                    .contentTransition(.symbolEffect(.replace))
-                    .accessibilityHidden(true)
-                Text(status.online ? (status.muted ? "在线 · 已静音" : "在线 · 麦克风使用中") : "离线")
-                    .font(.title3.bold()).foregroundStyle(tint)
-                Text(detail(status)).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .accessibilityElement(children: .combine)
-            .listRowBackground(Color.clear)
-            .animation(.snappy, value: status)
+            hero(symbol: status.online ? (status.muted ? "mic.slash.fill" : "mic.fill") : "mic.slash",
+                 tint: status.online ? (status.muted ? .red : .green) : .gray, lit: status.online,
+                 title: status.online ? (status.muted ? "在线 · 已静音" : "在线 · 麦克风使用中") : "离线",
+                 detail: detail(status))
+                .animation(.snappy, value: status)
         } else if cloud.status != nil {
             Text("设备还没有上报。先在“切换 Wi-Fi”里给设备连网。").foregroundStyle(.secondary)
         } else if cloud.busy {
@@ -118,6 +143,44 @@ struct HomeView: View {
         } else {
             Text("没有读到设备状态，下拉重试。").foregroundStyle(.secondary)
         }
+    }
+
+    /// 大圆只表达状态;切声源用顶部的分段控件,和 Mac 菜单同构。
+    private func hero(symbol: String, tint: Color, lit: Bool, title: String, detail: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.largeTitle.weight(.semibold)).foregroundStyle(.white)
+                .frame(width: 104, height: 104)
+                .background(Circle().fill(tint.gradient))
+                .padding(8)
+                .overlay(Circle().strokeBorder(tint.opacity(0.25), lineWidth: 6))
+                .shadow(color: tint.opacity(lit ? 0.35 : 0), radius: 16, y: 6)
+                .contentTransition(.symbolEffect(.replace))
+                .accessibilityHidden(true)
+            Text(title).font(.title3.bold()).foregroundStyle(tint)
+            Text(detail).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .listRowBackground(Color.clear)
+        .accessibilityElement(children: .combine)
+        .animation(.snappy, value: phoneMic.joined)
+        .animation(.snappy, value: phoneMic.talking)
+    }
+
+    /// 声源:设备 / 手机,决定下面整页讲哪个。选“手机”即加入频道,选“设备”即离开;选择跨启动保留。
+    private var sourcePicker: some View {
+        Picker("声源", selection: Binding(get: { phoneSource }, set: { on in
+            phoneSource = on
+            if on != phoneMic.joined { phoneMic.toggle() }
+        })) {
+            Label("设备", systemImage: "mic.fill").tag(false)
+            Label("手机", systemImage: "iphone.gen3").tag(true)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets())
     }
 
     @ViewBuilder private var statusFooter: some View {

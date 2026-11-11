@@ -18,6 +18,9 @@ public enum Wire {
     public static let cloudState = uuid(9)  // read + notify:无凭据的设备云端状态 JSON
     public static let networks = uuid(10)   // read:设备最近一次 Wi-Fi 扫描结果 JSON,≤512 字节
     public static let identity = uuid(11)   // read:出厂证书 DER,≤512 字节;无出厂身份为空
+    /// iPhone 当麦克风:手机扮成外设,只在这个 service 下挂 info/audio/status/control(同上 UUID 与格式)。
+    /// 与设备 service 分开,Mac 按「声源」只扫其一,不会连错。
+    public static let phoneService = uuid(12)
 
     public static func muteCommand(_ muted: Bool) -> Data { Data([0x01, muted ? 1 : 0]) }
     public static let dumpCommand = Data([0x02])
@@ -37,6 +40,18 @@ public enum Wire {
         var data = dashboard(epoch: epoch, tzMinutes: tzMinutes, cpu: cpu, mem: mem, mouse: mouse, keyboard: keyboard)
         data.append(contentsOf: [macBattery, macPower])
         return data
+    }
+
+    /// audio 通知分片(切法同固件 uplink.cpp):每片 seq u16 LE ‖ frag u8 ‖ 至多 chunk 字节 Opus,末片 frag bit7。
+    /// chunk = 单条通知可带字节数 − 3;超过 127 片的帧不发(返回空)。
+    public static func fragments(seq: UInt16, opus: Data, chunk: Int) -> [Data] {
+        guard chunk > 0, !opus.isEmpty, (opus.count + chunk - 1) / chunk <= 0x80 else { return [] }
+        let bytes = [UInt8](opus)
+        return stride(from: 0, to: bytes.count, by: chunk).enumerated().map { frag, off in
+            let end = min(off + chunk, bytes.count)
+            let flag = UInt8(frag) | (end == bytes.count ? 0x80 : 0)
+            return Data([UInt8(seq & 0xff), UInt8(seq >> 8), flag] + bytes[off..<end])
+        }
     }
 
     /// ATT 属性值上限:card 整包不超过这么多字节(固件 kCardMax)。

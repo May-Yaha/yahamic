@@ -42,6 +42,22 @@ extension View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassEffect(.regular, in: .rect(cornerRadius: PanelSpacing.cardRadius))
     }
+
+    /// 待处理提醒块(缺 BlackHole、缺权限):淡橙底,与模块同尺寸。
+    func noticeTile() -> some View {
+        padding(PanelSpacing.cardPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(MenuStatusTint.warning.fill, in: .rect(cornerRadius: PanelSpacing.cardRadius))
+    }
+}
+
+/// 面板分组小标题:讲话 / 转文字 / 输出。
+struct SectionTitle: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+    var body: some View {
+        Text(text).font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.leading, PanelSpacing.inner)
+    }
 }
 
 /// 圆形图标:tint 为 nil 表示「关」。

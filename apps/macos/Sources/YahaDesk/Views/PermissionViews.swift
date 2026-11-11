@@ -8,7 +8,7 @@ struct PermissionCard: View {
     let onOpen: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PanelSpacing.row) {
             Label("「按住讲话」需要键盘权限", systemImage: "lock.shield.fill")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(MenuStatusTint.warning.color)
@@ -21,7 +21,6 @@ struct PermissionCard: View {
                 Button("打开系统设置", action: onOpen).controlSize(.small)
             }
         }
-        .padding(PanelSpacing.cardPadding)
-        .background(RoundedRectangle(cornerRadius: PanelSpacing.cardRadius).fill(MenuStatusTint.warning.fill))
+        .noticeTile()
     }
 }
