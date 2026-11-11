@@ -1,0 +1,159 @@
+name: tests
+
+# PR 与 main push 只跑 Linux；发版前手动 dispatch 才追加 Windows 套件。
+on:
+  push:
+    branches: [main]
+    paths: ["scripts/**", "tests/**", "assets/**", "references/**", "SKILL.md", ".github/workflows/tests.yml"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  select:
+    name: select
+    runs-on: ubuntu-latest
+    outputs:
+      core_matrix: ${{ steps.select_matrix.outputs.core_matrix }}
+      browser_matrix: ${{ steps.select_matrix.outputs.browser_matrix }}
+      browser: ${{ steps.select_matrix.outputs.browser }}
+    steps:
+      - name: 换行符保持原样
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: select_matrix
+        shell: bash
+        run: |
+          linux_core='[{"name":"linux","os":"ubuntu-latest"}]'
+          full_core='[{"name":"linux","os":"ubuntu-latest"},{"name":"windows","os":"windows-latest"}]'
+          linux_browser='[{"name":"browser linux · chrome","os":"ubuntu-latest","locale":""},{"name":"browser linux · chrome · GBK","os":"ubuntu-latest","locale":"zh_CN.GBK"}]'
+          full_browser='[{"name":"browser linux · chrome","os":"ubuntu-latest","locale":""},{"name":"browser linux · chrome · GBK","os":"ubuntu-latest","locale":"zh_CN.GBK"},{"name":"browser windows · chrome · dark","os":"windows-latest","theme":"dark","node":24},{"name":"browser windows · edge","os":"windows-latest","browser":"edge"}]'
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            core="$full_core"; browser_matrix="$full_browser"; browser=1
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            core="$linux_core"
+            if git diff --name-only "${{ github.event.pull_request.base.sha }}...HEAD" | grep -E '^(scripts/|tests/|assets/|references/|\.github/workflows/tests\.yml$)' >/dev/null; then
+              browser_matrix="$linux_browser"; browser=1
+            else
+              browser_matrix='[]'; browser=0
+            fi
+          else
+            core="$linux_core"; browser_matrix="$linux_browser"; browser=1
+          fi
+          echo "core_matrix=$core" >> "$GITHUB_OUTPUT"
+          echo "browser_matrix=$browser_matrix" >> "$GITHUB_OUTPUT"
+          echo "browser=$browser" >> "$GITHUB_OUTPUT"
+
+  core:
+    name: core ${{ matrix.name }}
+    needs: select
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.select.outputs.core_matrix) }}
+    steps:
+      - name: 换行符保持原样
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 运行非浏览器测试
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, sys, unittest
+          from pathlib import Path
+          sys.path.insert(0, os.path.abspath("tests"))
+          browser_modules = {"test_build_explorer", "test_prep_image", "test_shoot"}
+          modules = [path.stem for path in sorted(Path("tests").glob("test_*.py"))
+                     if path.stem not in browser_modules]
+          suite = unittest.defaultTestLoader.loadTestsFromNames(modules)
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(not result.wasSuccessful())
+          PY
+
+  browser:
+    name: ${{ matrix.name }}
+    needs: select
+    if: needs.select.outputs.browser == '1'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.select.outputs.browser_matrix) }}
+    env:
+      OIL_SHOOT_SLOW_HOST: "1"
+    steps:
+      - name: 换行符保持原样
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node || 22 }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Linux：装 ffmpeg，放开 Chrome 沙箱要用的用户命名空间
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ffmpeg fonts-noto-cjk
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Linux：换成 GBK 区域设置
+        if: matrix.locale != ''
+        run: |
+          sudo locale-gen ${{ matrix.locale }}
+          echo "OIL_TEST_LOCALE=${{ matrix.locale }}" >> "$GITHUB_ENV"
+      - name: Windows：装 ffmpeg
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
+      - name: Windows：系统设成深色主题
+        if: matrix.theme == 'dark'
+        shell: pwsh
+        run: |
+          $key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+          New-Item -Path $key -Force | Out-Null
+          Set-ItemProperty -Path $key -Name AppsUseLightTheme -Value 0 -Type DWord
+          Set-ItemProperty -Path $key -Name SystemUsesLightTheme -Value 0 -Type DWord
+      - name: Windows：指定用 Edge
+        if: matrix.browser == 'edge'
+        shell: pwsh
+        run: |
+          $edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $edge) { throw "没找到 Edge" }
+          "CHROME_PATH=$edge" >> $env:GITHUB_ENV
+          Write-Output "Edge $((Get-Item $edge).VersionInfo.ProductVersion)"
+      - name: 运行浏览器相关测试
+        shell: bash
+        run: |
+          python - <<'PY'
+          import locale, os, sys, unittest
+          if os.environ.get("OIL_TEST_LOCALE"):
+              locale.setlocale(locale.LC_CTYPE, os.environ["OIL_TEST_LOCALE"])
+          print(f"text={locale.getencoding()} filesystem={sys.getfilesystemencoding()}", flush=True)
+          sys.path.insert(0, os.path.abspath("tests"))
+          modules = ["test_build_explorer", "test_prep_image", "test_shoot"]
+          suite = unittest.defaultTestLoader.loadTestsFromNames(modules)
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(not result.wasSuccessful())
+          PY
+      - name: Windows：没有留下浏览器进程
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $left = @(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('oil-shoot-') -and $_.CommandLine.Contains('user-data-dir') })
+          $left | Select-Object ProcessId, Name | Format-Table
+          if ($left.Count) { throw "有 $($left.Count) 个浏览器进程没有退出" }
