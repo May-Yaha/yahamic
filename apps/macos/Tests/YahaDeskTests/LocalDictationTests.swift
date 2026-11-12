@@ -141,6 +141,24 @@ struct LocalDictationTests {
         for _ in 0..<200 where overlay.phase != .review { try? await Task.sleep(for: .milliseconds(5)) }
     }
 
+    @Test func phoneOnlyTakesOverWhenFreshlyOpened() {
+        let model = HomeModel.shared
+        defer { model.selectSource(phone: false) }
+        model.phoneMicChanged(true)  // first sight: the phone was just opened
+        #expect(model.phoneMic)
+        model.selectSource(phone: false)
+        model.phoneMicChanged(true)  // same phone seen again after an uplink rebuild (reconnect, firmware reboot)
+        #expect(!model.phoneMic)
+        model.phoneMicChanged(false)  // background advert gap in device mode
+        model.phoneMicChanged(true)
+        #expect(!model.phoneMic)
+        model.selectSource(phone: true)
+        model.phoneMicChanged(false)  // tapped stop on the iPhone
+        #expect(!model.phoneMic)
+        model.phoneMicChanged(true)  // tapped start again
+        #expect(model.phoneMic)
+    }
+
     @Test func doubaoAndLocalDictationAreMutuallyExclusive() {
         let model = HomeModel.shared
         let saved = (model.pttEnabled, model.localSTTEnabled, model.doubaoEnabled)

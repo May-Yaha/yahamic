@@ -28,5 +28,5 @@
 
 - 链路：App 打开授权页拿 code，回调 `yahadesk://oauth` 直达 App；code 换令牌与续期走 hub `POST /api/v1/baidu-pan/desk/token`。百度换取必须带 `client_secret`（不带返回 20025），所以不能改成 App 直连百度，SecretKey 不得进入本开源仓库或安装包。
 - App 的 `PanLogin.appKey` 必须与 hub 环境的 AppKey/SecretKey 属同一百度应用（AppID 124461637）。不一致时换取报 20038，登记在该应用下的回调也会报 20030。
-- 回调地址由用户在百度控制台登记，未经同意不改 `redirect_uri`；登记清单见 `docs/requirements/desk-pan-quick-oauth-2026-11-09/README.md`。
+- 回调地址由用户在百度控制台登记，未经同意不改 `redirect_uri`；登记清单见 `docs/archive/requirements/desk-pan-quick-oauth-2026-11-09/README.md`。
 - 排障先看 errno：Mac 日志 `~/Library/Logs/YahaDesk.log` 的「网盘登录失败」行带 hub 透传的百度 errno。用假 code 请求 hub 返回 10401（而非 10506）说明 hub 自身密钥匹配。hub 由用户在服务器上手动发布，改完服务端先确认线上版本再复测。

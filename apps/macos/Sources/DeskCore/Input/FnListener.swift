@@ -144,6 +144,15 @@ public final class FnListener {
     private var lastDown = false        // 对外状态 = 两路径并集,翻转才回调
     private let onChange: (Bool) -> Void  // true = 讲话键按下
     public let key: TalkKey
+    /// 扣住讲话键的松开事件,等调用方 postHeldRelease() 再交给系统(最多扣 maxHold 秒)。
+    /// 豆包这类自己监听同一颗键的输入法一见松开就停录,而这句话的尾巴还在设备淡出、
+    /// 蓝牙与预缓冲里没播进 BlackHole;尾巴播完再让它看到松开。onChange 仍按真实按键时刻回调。
+    public var holdsRelease = false {
+        didSet { if !holdsRelease { postHeldRelease() } }
+    }
+    public static let maxHold: TimeInterval = 3
+    private var heldRelease: DispatchWorkItem?  // 扣住的松开事件(到点或被叫时重发)
+    fileprivate static let repostMark: Int64 = 0x5961_6861  // 自己重发的事件,tap 里直接放行
 
     /// 创建时预检的监听权限状态(辅助功能 + 输入监听,见 ListenPermission)。
     public let permission: ListenPermission
@@ -184,6 +193,7 @@ public final class FnListener {
     /// 显式停用:从主 RunLoop 摘掉事件源并 invalidate tap,此后不再有任何回调。
     /// 幂等;调用方在丢弃实例引用前必须调用,保证任意时刻至多一个活动 tap。
     public func stop() {
+        postHeldRelease()  // 扣住的松开立即补发,下游不会卡在「按住」
         if let source {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
             self.source = nil
@@ -207,6 +217,7 @@ public final class FnListener {
     /// 并集状态翻转时才通知外部,天然去抖:两路径并存不会双触发。
     /// tap 被禁用期间的 Fn 抬起会丢:按系统当前修饰键状态重置,免得卡在「按住」。
     fileprivate func resyncAfterTapDisabled() {
+        postHeldRelease()
         keycodeFnDown = false
         fnFlagSet = CGEventSource.flagsState(.combinedSessionState).rawValue & key.deviceMask != 0
         updateCombined()
@@ -219,8 +230,30 @@ public final class FnListener {
         onChange(down)
     }
 
-    fileprivate func handle(_ event: CGEvent, type: CGEventType) {
+    /// 扣住的松开现在发出;没有扣住的就什么也不做。
+    public func postHeldRelease() {
+        guard let held = heldRelease else { return }
+        held.perform()
+        held.cancel()
+    }
+
+    /// 返回 true = 这条事件被吞掉(推迟或改由自己重发)。
+    fileprivate func handle(_ event: CGEvent, type: CGEventType) -> Bool {
         let key = Int(event.getIntegerValueField(.keyboardEventKeycode))
+        // 扣住期间按了别的键:先补发松开,再按原顺序重发这个键,下游不会看成「讲话键 + 该键」。
+        let ownFlags = type == .flagsChanged && (self.key == .fn || key == self.key.keyCode)
+        if !ownFlags, heldRelease != nil, let copy = event.copy() {
+            postHeldRelease()
+            copy.setIntegerValueField(.eventSourceUserData, value: Self.repostMark)
+            copy.post(tap: .cgSessionEventTap)
+            handleTracked(event, type: type, key: key)
+            return true
+        }
+        return handleTracked(event, type: type, key: key)
+    }
+
+    @discardableResult
+    private func handleTracked(_ event: CGEvent, type: CGEventType, key: Int) -> Bool {
         if type == .keyDown || type == .keyUp {
             // 键码分支(路径 B):只有 Fn 键码 63 关心;其余按键直接放行
             // (默认模式必须原样返回事件)。重复 keyDown 由 updateCombined 去抖。
@@ -233,20 +266,41 @@ public final class FnListener {
                 fnFlagSet = false
                 updateCombined()
             }
-            return
+            return false
         }
         // flagsChanged 分支(路径 A):只看 Fn 相关位
         // (kCGEventFlagMaskSecondaryFn,对应 NX_DEVICELFNKEYMASK)是否相对
         // 上一条 flagsChanged 实际翻转。按住 Fn 期间再按 Shift/Cmd 也会来
         // flagsChanged,但 Fn 位不变——整条忽略,避免误判「Fn 松开」。
-        guard type == .flagsChanged else { return }
+        guard type == .flagsChanged else { return false }
         if self.key != .fn {
-            guard key == self.key.keyCode else { return }  // 别的修饰键变化不影响讲话键
+            guard key == self.key.keyCode else { return false }  // 别的修饰键变化不影响讲话键
         }
         let fn = event.flags.rawValue & self.key.deviceMask != 0
-        guard fn != fnFlagSet else { return }
+        guard fn != fnFlagSet else { return false }
         fnFlagSet = fn
         updateCombined()
+        return hold(event, release: !fn)
+    }
+
+    /// 松开:扣住,postHeldRelease() 或 maxHold 到点时原样重发。扣住期间又按下:这次按下与扣住的
+    /// 松开一起吞掉,下游看到的是一次没断的长按。只管 flagsChanged 路径(Fn 的键码 63 路径照常放行)。
+    private func hold(_ event: CGEvent, release: Bool) -> Bool {
+        if !release, let held = heldRelease {
+            held.cancel()
+            heldRelease = nil
+            return true
+        }
+        guard release, holdsRelease, let copy = event.copy() else { return false }
+        copy.setIntegerValueField(.eventSourceUserData, value: Self.repostMark)
+        let work = DispatchWorkItem { [weak self] in
+            self?.heldRelease = nil
+            copy.timestamp = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)  // 事件时戳就是这个时钟(纳秒)
+            copy.post(tap: .cgSessionEventTap)
+        }
+        heldRelease = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.maxHold, execute: work)
+        return true
     }
 }
 
@@ -261,6 +315,9 @@ private func fnTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGE
         listener.resyncAfterTapDisabled()
         return Unmanaged.passUnretained(event)
     }
-    listener.handle(event, type: type)
-    return Unmanaged.passUnretained(event)  // defaultTap:不修改事件,原样放行
+    if event.getIntegerValueField(.eventSourceUserData) == FnListener.repostMark {
+        return Unmanaged.passUnretained(event)  // 自己推迟后重发的,已经算过
+    }
+    // defaultTap:不修改事件;只有推迟的讲话键松开(见 releaseDelay)先吞掉、到点重发。
+    return listener.handle(event, type: type) ? nil : Unmanaged.passUnretained(event)
 }

@@ -39,6 +39,13 @@ extension HomeModel {
     }
 
     func handleTalkKey(_ down: Bool, name: String) {
+        // 话尾里又按下:豆包那边被扣住的松开与这次按下一起吞掉(见 FnListener.hold),一句没断;
+        // 本地转文字则先把上一句按现有音频收尾,新的一句重新采集。
+        if talkTailTask != nil {
+            talkTailTask?.cancel()
+            talkTailTask = nil
+            finishLocalDictationIfSafe(connected: mic.state.connected, muted: true, force: true)
+        }
         // 豆包模式:豆包有自己的语音浮层和识别,这边只送声(经 BlackHole),不弹浮层、不转文字
         if doubaoEnabled {
             // 中途被切到别的输入法:按下时自动切回豆包,不用自己去菜单栏找。
@@ -47,8 +54,45 @@ extension HomeModel {
             overlay.setKey(down, online: mic.isOnline, muted: mic.state.muted)
             if down { beginLocalDictation() } else { requestLocalDictationStop() }
         }
-        uplink?.sendControl(muted: !down)
-        log(down ? "\(name) 按下 → 送声" : "\(name) 松开 → 静音")
+        if down {
+            uplink?.sendControl(muted: false)
+            log("\(name) 按下 → 送声")
+        } else {
+            log("\(name) 松开 → \(Int(Self.talkTailDelay * 1000)) ms 后静音")
+            talkTailTask = Task { [weak self] in await self?.finishTalkTail() }
+        }
+    }
+
+    /// 松开时最后一个字常常还在嘴里/麦克风缓冲里:晚这么久才让设备静音。
+    static let talkTailDelay: TimeInterval = 0.3
+
+    /// 松开后的话尾:晚 talkTailDelay 静音,等设备淡出帧到齐、本地播空,再让下游收尾
+    /// (豆包看到松开、本地转文字截止)。整个过程最多约 2.5 秒,超时照样收尾。
+    private func finishTalkTail() async {
+        try? await Task.sleep(for: .seconds(Self.talkTailDelay))
+        guard !Task.isCancelled else { return }
+        uplink?.sendControl(muted: true)
+        let deadline = Date().addingTimeInterval(2.5)
+        while Date() < deadline {
+            let quiet = Date().timeIntervalSince(lastFrameAt) > 0.15
+            if !mic.state.connected || (mic.state.muted && quiet && !playbackPending) { break }
+            try? await Task.sleep(for: .milliseconds(30))
+            guard !Task.isCancelled else { return }
+        }
+        try? await Task.sleep(for: .milliseconds(80))  // 输出设备自己的缓冲(AudioSink → BlackHole)
+        guard !Task.isCancelled else { return }
+        talkTailTask = nil
+        fn?.postHeldRelease()
+        finishLocalDictationIfSafe(connected: mic.state.connected, muted: true, force: true)
+    }
+
+    /// 讲话键监听要换掉/关掉:话尾不再等,扣住的松开立即放行。
+    func cancelTalkTail() {
+        guard let task = talkTailTask else { return }
+        task.cancel()
+        talkTailTask = nil
+        uplink?.sendControl(muted: true)
+        fn?.postHeldRelease()
     }
 
     private func beginLocalDictation() {
@@ -107,9 +151,9 @@ extension HomeModel {
         localSTTStopTask?.cancel()
         localSTTState = .transcribing
         overlay.setTranscribing()
-        // 设备状态通常会先确认静音；断链或状态丢失时用短超时封口，不能永久占住音频抽头。
+        // 正常由 finishTalkTail 在话尾收完后收尾；断链或状态丢失时用超时封口，不能永久占住音频抽头。
         localSTTStopTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             self?.finishLocalDictationIfSafe(connected: true, muted: false, force: true)
         }

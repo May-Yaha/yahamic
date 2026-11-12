@@ -144,6 +144,8 @@ final class OwnVoiceStream {
     }
 
     private var received: Int { base + samples.count }
+    /// 还有没放进抖动缓冲的音频(话尾在等判定或停顿收尾)。
+    var pending: Bool { received > released }
 
     private func decideNext() {
         guard !deciding, received - filter.decided >= OwnVoiceFilter.hop else { return }

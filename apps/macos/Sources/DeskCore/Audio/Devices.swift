@@ -118,6 +118,23 @@ public func restoreFullVolume(of id: AudioDeviceID) -> Float32? {
     return lowered
 }
 
+/// 把系统默认输入设成 id(豆包等跟随默认输入录音的应用才听得到虚拟麦克风)。
+/// 已经是它返回 false;没有输入流的设备不设。
+@discardableResult
+public func makeDefaultInput(_ id: AudioDeviceID) -> Bool {
+    guard outputStreamCount(id, scope: kAudioDevicePropertyScopeInput) > 0 else { return false }
+    var address = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDefaultInputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain)
+    let system = AudioObjectID(kAudioObjectSystemObject)
+    var current = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    if AudioObjectGetPropertyData(system, &address, 0, nil, &size, &current) == noErr, current == id { return false }
+    var next = id
+    return AudioObjectSetPropertyData(system, &address, 0, nil, size, &next) == noErr
+}
+
 /// 监听设备列表与(当前出口设备的)采样率变化,回调在主队列。
 /// 设备被拔掉/驱动重装、用户在「音频 MIDI 设置」里改采样率时,调用方据此重建 AudioSink。
 public final class AudioHardwareWatcher {

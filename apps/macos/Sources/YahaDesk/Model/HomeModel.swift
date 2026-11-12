@@ -53,6 +53,8 @@ final class HomeModel: ObservableObject {
             if doubaoEnabled, localSTTEnabled { localSTTEnabled = false }
             if doubaoEnabled, !pttEnabled { pttEnabled = true }
             if doubaoEnabled, oldValue != doubaoEnabled, ActiveInputMethod.selectDoubao() { log("已切到豆包输入法") }
+            fn?.holdsRelease = doubaoEnabled
+            if doubaoEnabled { useVirtualMicAsDefaultInput() }
         }
     }
     var doubaoInstalled: Bool { ActiveInputMethod.doubaoInstalled }  // 每次读都查,装完不用重启
@@ -76,21 +78,27 @@ final class HomeModel: ObservableObject {
     @Published private(set) var phoneMic = false {
         didSet { if started, !mic.paused, oldValue != phoneMic { startUplink() } }
     }
-    /// 手机还开着时在 Mac 上切回设备:这台手机这次就不再自动接管,等它停了再说。
-    private var phoneDismissed = false
+    /// iPhone 的广播在这台 Mac 上最近一次消失的时刻;nil + phoneSeen = 正看得到。
+    /// 存在 HomeModel 而不是 Uplink:每次链路重建(重连、刷固件后重启)Uplink 都从「没见过」开始,
+    /// 第一条广播会被当成「刚打开」,把手动切回的设备又抢成手机。
+    private var phoneGoneSince: Date?
+    private var phoneSeen = false
 
-    func selectSource(phone: Bool) {
-        if !phone, phoneMic, mic.isOnline { phoneDismissed = true }
-        phoneMic = phone
-    }
+    func selectSource(phone: Bool) { phoneMic = phone }
 
-    private func phoneMicChanged(_ on: Bool) {
+    func phoneMicChanged(_ on: Bool) {
         guard on else {
-            phoneDismissed = false
+            // 手机模式下断开 = iPhone 点了停止(或掉线),下次出现立即算新打开;
+            // 设备模式下是 5 秒没看到广播,后台 iPhone 常这样断续,先记下时刻。
+            if phoneGoneSince == nil { phoneGoneSince = phoneMic ? .distantPast : Date() }
             if phoneMic { log("iPhone 停止了手机当麦克风,声源切回设备"); phoneMic = false }
             return
         }
-        guard !phoneMic, !phoneDismissed else { return }
+        // 只有新打开才自动切:从没见过,或消失满 1 分钟。一直开着时 Mac 上切回设备就一直有效。
+        let fresh = !phoneSeen || phoneGoneSince.map { Date().timeIntervalSince($0) > 60 } == true
+        phoneSeen = true
+        phoneGoneSince = nil
+        guard fresh, !phoneMic else { return }
         log("iPhone 打开了手机当麦克风,声源切到手机")
         phoneMic = true
     }
@@ -131,12 +139,14 @@ final class HomeModel: ObservableObject {
     var localSTTWorkTask: Task<Void, Never>?
     var localSTTStopTask: Task<Void, Never>?
     var localSTTPreviewTask: Task<Void, Never>?
+    var talkTailTask: Task<Void, Never>?  // 松开后的话尾:晚一点再静音,豆包模式还要等播空再放行松开
+    var lastFrameAt = Date.distantPast  // 最近一帧设备音频到达
     var localSTTLive = LiveTranscript()
     var localSTTOwnVoice: OwnVoiceFilter?
     private var ownVoiceStream: OwnVoiceStream?
     private var voiceProfileWatch: AnyCancellable?
     private var aiPolishWatch: AnyCancellable?
-    private var fn: FnListener?
+    private(set) var fn: FnListener?
     private var fnRetry: Timer?
     private var hardware: AudioHardwareWatcher?  // 设备增减/采样率变化 → 重建出口
     private var deviceWatch: Timer?  // 缺输出设备时的轮询兜底,设备出现即停
@@ -324,6 +334,15 @@ final class HomeModel: ObservableObject {
         if outputDeviceName != device.name { outputDeviceName = device.name }  // 存精确名
         log("音频出口:\(device.name)(\(Int(device.sampleRate)) Hz)")
         restoreVirtualMicVolume()
+        if doubaoEnabled { useVirtualMicAsDefaultInput() }
+    }
+
+    /// 豆包跟随系统默认输入录音:默认输入不是 BlackHole 时它听的是 Mac/耳机麦克风
+    /// (蓝牙耳机还要切 HFP,开头丢字),听不到设备。豆包模式下把默认输入设成 BlackHole。
+    func useVirtualMicAsDefaultInput() {
+        guard let sink, sink.deviceName.localizedCaseInsensitiveContains("BlackHole"),
+              DeskCore.makeDefaultInput(sink.deviceID) else { return }
+        log("豆包模式:系统默认输入已设为 \(sink.deviceName)(豆包按默认输入录音)")
     }
 
     /// 开播与每次开始讲话时把虚拟麦克风音量拉回 100%(被调低时听写收不到声、不出字)。
@@ -401,7 +420,10 @@ final class HomeModel: ObservableObject {
         }
         // 与 onState 同一串行队列、同样切主线程,帧与静音切换的先后不乱。
         link.onOpus = { [weak self] packet, samples in
-            DispatchQueue.main.async { self?.recordings.append(packet, samples: samples) }
+            DispatchQueue.main.async {
+                self?.lastFrameAt = Date()
+                self?.recordings.append(packet, samples: samples)
+            }
         }
         link.onLevel = { [weak self] db in
             DispatchQueue.main.async { self?.overlay.push(level: db) }
@@ -419,7 +441,8 @@ final class HomeModel: ObservableObject {
         let startsTalking = state.connected && !state.muted && (mic.state.muted || !mic.state.connected)
         mic.state = state
         if !state.connected { ownVoiceStream?.reset() }
-        finishLocalDictationIfSafe(connected: state.connected, muted: state.muted)
+        // 静音后设备还要发完淡出帧:正常收尾由 finishTalkTail 等帧停了再做,这里只管断链。
+        if !state.connected { finishLocalDictationIfSafe(connected: false, muted: state.muted) }
         completePrivateAudioCaptureIfSafe(state)
         cloud.updateDeviceState(state)
         recordings.talking(state.connected && !state.muted)
@@ -432,6 +455,9 @@ final class HomeModel: ObservableObject {
                    state.muted ? "静音" : "送声", state.levelDb, state.framesPerSecond,
                    state.bufferMs, state.overflows, state.underruns))
     }
+
+    /// 还有音频没写进 BlackHole:抖动缓冲没播空,或本人声音过滤还压着话尾。
+    var playbackPending: Bool { jitter.count > 0 || ownVoiceStream?.pending == true }
 
     /// 本人声纹(开关打开且档案就绪时),否则 nil。
     var ownVoiceProfile: [Float]? {
@@ -507,6 +533,7 @@ final class HomeModel: ObservableObject {
     }
 
     private func applyPushToTalk() {
+        cancelTalkTail()
         uplink?.pushToTalk = pttEnabled
         if pttEnabled {
             ensureFnListener()
@@ -559,6 +586,7 @@ final class HomeModel: ObservableObject {
                 }
             }) {
                 // 此处 fn 必为 nil(上面的 else if 守卫),旧实例已在丢弃前 stop。
+                listener.holdsRelease = doubaoEnabled
                 fn = listener
                 fnAvailable = true
                 log("按住 \(name) 讲话:已启用")
