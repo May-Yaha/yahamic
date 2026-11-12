@@ -130,6 +130,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleName</key><string>$DISPLAY_NAME</string>
   <key>CFBundleDisplayName</key><string>$DISPLAY_NAME</string>
+  <key>CFBundleDevelopmentRegion</key><string>zh-Hans</string>
+  <key>CFBundleLocalizations</key><array><string>zh-Hans</string></array>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundleExecutable</key><string>YahaDesk</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -148,6 +150,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>ITSAppUsesNonExemptEncryption</key><false/>
   <key>NSHumanReadableCopyright</key><string>© 2026 Zhi.AI</string>
   <key>NSBluetoothAlwaysUsageDescription</key><string>Yaha Desk 通过蓝牙连接 yahadesk 麦克风,接收音频并同步静音状态。</string>
+  <key>NSAudioCaptureUsageDescription</key><string>Yaha Desk 读取本机正在播放的声音,生成视频字幕与翻译,不录制保存。</string>
   <key>DTXcode</key><string>${XC_MA}${XC_MI:-0}${XC_PA:-0}</string>
   <key>DTXcodeBuild</key><string>$XC_BUILD</string>
   <key>DTSDKName</key><string>macosx$SDK_VER</string>

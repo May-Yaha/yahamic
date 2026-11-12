@@ -5,6 +5,7 @@
 
 ## 2026-11-12
 
+- [视频字幕与翻译](desk-live-caption-2026-11-12/README.md)
 - [讲话首尾不丢字、手机声源不乱切](desk-talk-edges-2026-11-12/README.md)
 
 ## 2026-11-11

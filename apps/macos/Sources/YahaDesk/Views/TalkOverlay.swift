@@ -253,15 +253,18 @@ private struct TalkOverlayView: View {
 
 /// 实时字幕:模型每轮一次吐出一截字,这里按匀速打字把新增的字逐个显出来(前沿两个字渐隐过渡),
 /// 不跟着整截跳出。模型改写已显示的字时直接换字,不重放动画,免得整行闪。
-private struct CaptionText: View {
+/// 视频字幕(SubtitleOverlay)也用它。
+struct CaptionText: View {
     let text: String
+    var font: Font = .callout
+    var lines = 3
     @State private var shown = ""
     @State private var revealed = 0.0  // 已显出的字数,动画中是小数
 
     var body: some View {
         Text(shown)
-            .font(.callout)
-            .lineLimit(3)
+            .font(font)
+            .lineLimit(lines)
             .truncationMode(.head)  // 长句只看最新的部分
             .textRenderer(TypingReveal(count: shown.count, revealed: revealed))
             .onAppear { update(text) }

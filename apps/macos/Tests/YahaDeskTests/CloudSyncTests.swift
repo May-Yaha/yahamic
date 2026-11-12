@@ -717,6 +717,7 @@ struct CloudSyncTests {
             aiPolish: aiPolish,
             training: TrainingSet(speech: LocalSpeechRecognizer(), polish: aiPolish, recordings: recordings,
                                   folder: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)),
+            models: OfflineModels(),
             deviceFirmware: "0.3.0"
         ), name: "device-setup", width: 620, height: 1_300)
     }

@@ -254,6 +254,15 @@ final class PCMBuffer: @unchecked Sendable {
         defer { lock.unlock() }
         return storage
     }
+
+    /// 取出已攒的数据并清空(视频字幕边采边取)。
+    func take() -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+        let data = storage
+        storage = Data()
+        return data
+    }
 }
 
 @MainActor
@@ -314,18 +323,7 @@ actor LocalSpeechRecognizer {
 
     init(
         loader: @escaping Loader = { progress in
-            let cache = HubCache(cacheDirectory: try LocalSpeechRecognizer.modelCacheDirectory())
-            guard let repository = Repo.ID(rawValue: LocalSpeechRecognizer.modelRepository) else {
-                throw LocalSTTError("Qwen3 模型地址无效")
-            }
-            let client = HubClient(cache: cache)
-            let directory = try await client.downloadSnapshot(
-                of: repository,
-                revision: LocalSpeechRecognizer.modelSourceRevision,
-                matching: ["*.safetensors", "*.json", "*.txt", "*.wav"],
-                progressHandler: progress
-            )
-            try Task.checkCancellation()
+            let directory = try await LocalSpeechRecognizer.download(progress: progress)
             return try await Qwen3ASRModel.fromModelDirectory(directory)
         }
     ) {
@@ -357,6 +355,45 @@ actor LocalSpeechRecognizer {
         return output.text
     }
 
+    /// 只下载权重到本机缓存,不载入内存;已下载的文件跳过。设置里「离线模型」与首次准备共用。
+    static func download(progress: ProgressHandler? = nil) async throws -> URL {
+        let cache = HubCache(cacheDirectory: try modelCacheDirectory())
+        guard let repository = Repo.ID(rawValue: modelRepository) else {
+            throw LocalSTTError("Qwen3 模型地址无效")
+        }
+        let directory = try await HubClient(cache: cache).downloadSnapshot(
+            of: repository,
+            revision: modelSourceRevision,
+            matching: ["*.safetensors", "*.json", "*.txt", "*.wav"],
+            progressHandler: progress
+        )
+        try Task.checkCancellation()
+        return directory
+    }
+
+    /// Hub 缓存里这个模型的整个目录(blobs + snapshots)。
+    static var repositoryDirectory: URL? {
+        try? modelCacheDirectory().appendingPathComponent("models--" + modelRepository.replacingOccurrences(of: "/", with: "--"))
+    }
+
+    /// 已下载完整(权重在固定版本的快照里)时返回占用字节数,否则 nil。
+    static func downloadedSize() -> Int64? {
+        guard let root = repositoryDirectory else { return nil }
+        let weights = root.appendingPathComponent("snapshots/\(modelSourceRevision)/model.safetensors")
+        guard FileManager.default.fileExists(atPath: weights.path),
+              let files = FileManager.default.enumerator(at: root.appendingPathComponent("blobs"),
+                                                         includingPropertiesForKeys: [.fileSizeKey])
+        else { return nil }
+        return files.compactMap { ($0 as? URL).flatMap { try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize } }
+            .reduce(Int64(0)) { $0 + Int64($1) }
+    }
+
+    /// 删除本机权重前先放掉内存里的模型,下次用到会重新下载。
+    func unload() {
+        model = nil
+        Memory.clearCache()
+    }
+
     private func load(progress: ProgressHandler? = nil) async throws -> Qwen3ASRModel {
         if let model { return model }
         // shortcut:HomeModel 在准备完成前不进入转写，不需要额外的 in-flight 去重 Task。
@@ -365,7 +402,7 @@ actor LocalSpeechRecognizer {
         return loaded
     }
 
-    private static func modelCacheDirectory() throws -> URL {
+    static func modelCacheDirectory() throws -> URL {
         let applicationSupport = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,

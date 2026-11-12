@@ -1,6 +1,7 @@
 import DeskProtocol
 import DeskShared
 import SwiftUI
+import Translation
 
 /// 设备设置窗口:系统设置式侧栏(彩色方块图标)+ 右侧分组表单,一页一件事;迷你播放条切页不中断。
 struct DeviceSetupView: View {
@@ -10,6 +11,7 @@ struct DeviceSetupView: View {
     @ObservedObject var firmware: FirmwareInstaller
     @ObservedObject var aiPolish: AIPolish
     @ObservedObject var training: TrainingSet
+    @ObservedObject var models: OfflineModels
     var deviceFirmware: String
     @State private var pane: Pane? = .device
     @State private var ssid = ""
@@ -18,14 +20,15 @@ struct DeviceSetupView: View {
     @State private var confirmingVoiceDelete = false
     @State private var zhipuKey = ""
     @State private var zhipuMessage: String?
+    @State private var translationDownload: TranslationSession.Configuration?  // 设上就由系统弹下载确认
 
     enum Pane: CaseIterable, Identifiable {
-        case device, firmware, wifi, voice, aiPolish, labeling, pan, recordings, workbench
+        case device, firmware, wifi, voice, models, aiPolish, labeling, pan, recordings, workbench
         var id: Self { self }
         /// 侧栏三组:设备本身 → 语音处理 → 云与数据。
         static let groups: [(title: String, panes: [Pane])] = [
             ("设备", [.device, .firmware, .wifi]),
-            ("语音", [.voice, .aiPolish, .labeling]),
+            ("语音", [.voice, .models, .aiPolish, .labeling]),
             ("云与数据", [.pan, .recordings, .workbench]),
         ]
         var title: String {
@@ -37,6 +40,7 @@ struct DeviceSetupView: View {
             case .recordings: "录音"
             case .labeling: "标注"
             case .voice: "本人声纹"
+            case .models: "离线模型"
             case .aiPolish: "AI 润色"
             case .workbench: "工作台"
             }
@@ -50,6 +54,7 @@ struct DeviceSetupView: View {
             case .recordings: "waveform"
             case .labeling: "checklist"
             case .voice: "person.wave.2.fill"
+            case .models: "arrow.down.circle.fill"
             case .aiPolish: "wand.and.sparkles"
             case .workbench: "rectangle.on.rectangle"
             }
@@ -63,6 +68,7 @@ struct DeviceSetupView: View {
             case .recordings: .red
             case .labeling: .green
             case .voice: .purple
+            case .models: .mint
             case .aiPolish: .orange
             case .workbench: .indigo
             }
@@ -91,6 +97,7 @@ struct DeviceSetupView: View {
                 case .recordings: recordingPane
                 case .labeling: LabelingPane(training: training, aiPolish: aiPolish, panLoggedIn: cloud.panLoggedIn)
                 case .voice: voiceProfileSection
+                case .models: modelsSection
                 case .aiPolish: aiPolishSection
                 case .workbench: workbenchSection
                 }
@@ -405,6 +412,90 @@ struct DeviceSetupView: View {
             Text("本人声纹")
         } footer: {
             Text("五段原始语音和声纹默认只保存在本机；只有点“备份到网盘”才会上传。打开菜单栏“只留本人声音”后，本地转文字和 BlackHole 会去掉不像本人的语段；你和别人同时说话时分不开。")
+        }
+    }
+
+    // MARK: 离线模型
+
+    private var modelsSection: some View {
+        Group {
+            Section {
+                LabeledContent("Qwen3-ASR 0.6B") {
+                    switch models.asr {
+                    case .missing: status("未下载(约 820 MB)", ok: false)
+                    case .downloading(let percent): progress("下载中 \(percent)%", busy: true)
+                    case .ready(let bytes): status("已下载 · \(OfflineModels.size(bytes))", ok: true)
+                    case .failed(let message): warning(message)
+                    }
+                }
+                if case .downloading(let percent) = models.asr {
+                    ProgressView(value: Double(percent), total: 100)
+                }
+                HStack {
+                    if case .ready = models.asr {
+                        Button("在访达中显示") { models.revealASR() }
+                        Spacer()
+                        Button("删除", role: .destructive) { Task { await models.deleteASR() } }
+                            .disabled(models.inUse())
+                            .help(models.inUse() ? "本地转文字或视频字幕正在用,先关掉再删" : "删除本机权重,用到时重新下载")
+                    } else if case .downloading = models.asr {
+                        Spacer()
+                        Button("取消") { models.cancelDownload() }
+                    } else {
+                        Spacer()
+                        Button("下载") { models.downloadASR() }.buttonStyle(.borderedProminent)
+                    }
+                }
+            } header: {
+                Text("语音识别")
+            } footer: {
+                Text("本地转文字与视频字幕共用,离线运行、声音不出本机。权重存在 ~/Library/Application Support/YahaDesk/Models,中断后再点下载会接着下。")
+            }
+            Section {
+                ForEach(models.pairs) { pair in
+                    LabeledContent(pair.title) {
+                        HStack(spacing: 8) {
+                            switch pair.status {
+                            case .installed: status("已安装", ok: true)
+                            case .supported:
+                                Button("下载") {
+                                    if translationDownload?.source == pair.source && translationDownload?.target == pair.target {
+                                        translationDownload?.invalidate()
+                                    } else {
+                                        translationDownload = .init(source: pair.source, target: pair.target)
+                                    }
+                                }
+                            default: Text("不支持").foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                HStack {
+                    Spacer()
+                    Button("刷新") { Task { await models.refreshPairs() } }
+                    Button("在系统设置中管理") { models.openSystemTranslationSettings() }
+                }
+            } header: {
+                Text("字幕翻译语言包")
+            } footer: {
+                Text("视频字幕翻译优先用系统离线翻译;没装的语言对填了 AI Key 时走 AI 翻译。语言包由系统下载与删除,删除到 系统设置 → 通用 → 语言与地区 → 翻译语言。")
+            }
+        }
+        .task {
+            models.refreshASR()
+            // 语言包点「完成」后在后台接着下,页面开着就每 5 秒查一次,装好自动变「已安装」。
+            while !Task.isCancelled {
+                await models.refreshPairs()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+        .translationTask(translationDownload) { session in
+            do {
+                try await session.prepareTranslation()  // 系统弹框确认下载,装好才返回
+            } catch {
+                models.log("⚠️ 离线模型:翻译语言包下载失败:\(error.localizedDescription)")
+            }
+            await models.refreshPairs()
         }
     }
 

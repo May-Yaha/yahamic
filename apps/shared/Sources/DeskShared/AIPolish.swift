@@ -133,6 +133,12 @@ public final class AIPolish: ObservableObject {
         try await chat(system: Self.correctPrompt, user: "A:\(live)\nB:\(offline)", timeout: 30, what: "AI 校对")
     }
 
+    /// 视频字幕翻译:系统翻译没装对应语言包时的后备。字幕常是半句话,照译不补全。
+    public func translate(_ text: String, to language: String) async throws -> String {
+        let system = "你是视频字幕翻译。把用户给出的字幕翻译成\(language),只输出译文,不解释、不加引号。字幕可能是半句话,照译即可,不要补全。"
+        return try await chat(system: system, user: text, timeout: 8, what: "AI 翻译")
+    }
+
     private func chat(system: String, user: String, timeout: TimeInterval, what: String) async throws -> String {
         guard let key = ZhipuKeychain.load() else { throw DeskProtocolError("未填写\(what)的 API Key") }
         guard let url = Self.chatURL(endpoint) else { throw DeskProtocolError("\(what)地址无效(需 https)") }

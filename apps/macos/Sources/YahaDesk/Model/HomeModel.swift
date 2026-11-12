@@ -6,6 +6,7 @@ import DeskProtocol
 import DeskShared
 import Foundation
 import ServiceManagement
+import Translation
 
 // 控制中心的状态与生命周期:设置持久化、音频出口、设备链路、Fn 监听、日志。
 // 控制接口命令见 HomeModel+Control,录制/指标/压测见 HomeModel+Diagnostics。
@@ -100,6 +101,26 @@ final class HomeModel: ObservableObject {
         log("iPhone 打开了手机当麦克风,声源切到手机")
         phoneMic = true
     }
+    /// 视频字幕:识别本机正在播放的声音,字幕贴在前台窗口底部。
+    @Published var liveCaptionEnabled: Bool {
+        didSet {
+            defaults.set(liveCaptionEnabled, forKey: "liveCaption")
+            if oldValue != liveCaptionEnabled { liveCaptionSettingChanged() }
+        }
+    }
+    @Published var captionTranslate: Bool {
+        didSet {
+            defaults.set(captionTranslate, forKey: "captionTranslate")
+            captionTranslationChanged()
+        }
+    }
+    /// 字幕翻译的目标语言(BCP 47,见 captionTargets)。
+    @Published var captionTarget: String {
+        didSet {
+            defaults.set(captionTarget, forKey: "captionTarget")
+            captionTranslationChanged()
+        }
+    }
     /// 按住讲话的键。HHKB 的 Fn 不上报 macOS,改选一颗修饰键。
     @Published var talkKey: TalkKey {
         didSet {
@@ -141,6 +162,13 @@ final class HomeModel: ObservableObject {
     var lastFrameAt = Date.distantPast  // 最近一帧设备音频到达
     var localSTTLive = LiveTranscript()
     var localSTTOwnVoice: OwnVoiceFilter?
+    var captionTap: SystemAudioTap?
+    var captionTask: Task<Void, Never>?
+    var captionTranslateTask: Task<Void, Never>?
+    var captionSessions: [String: TranslationSession] = [:]  // 按原文语言缓存
+    var captionPairStatus: [String: LanguageAvailability.Status] = [:]  // 「en→zh-Hans」是否已装离线语言包
+    var captionPendingText: String?  // 等着翻的最新一句
+    var captionMissingPairs = Set<String>()  // 缺翻译语言包的语言对只提示一次
     private var ownVoiceStream: OwnVoiceStream?
     private var voiceProfileWatch: AnyCancellable?
     private var aiPolishWatch: AnyCancellable?
@@ -163,11 +191,13 @@ final class HomeModel: ObservableObject {
     var isLive: Bool { mic.isOnline && !mic.state.muted }
 
     let overlay = TalkOverlay()
+    let subtitles = SubtitleOverlay()
     let cloud = CloudSync()
     let recordings = RecordingBackup()
     let voiceProfile = VoiceProfile()
     let firmware = FirmwareInstaller()
     let aiPolish = AIPolish()
+    let offlineModels = OfflineModels()
     lazy var training = TrainingSet(speech: localSpeech, polish: aiPolish, recordings: recordings)
     private var panRenewal: Task<Void, Never>?
 
@@ -182,6 +212,9 @@ final class HomeModel: ObservableObject {
         dictationConfirm = defaults.bool(forKey: "dictationConfirm")
         aiPolishEnabled = defaults.bool(forKey: "aiPolish")
         ownVoiceOnly = defaults.object(forKey: "ownVoiceOnly") as? Bool ?? true
+        liveCaptionEnabled = defaults.bool(forKey: "liveCaption")
+        captionTranslate = defaults.object(forKey: "captionTranslate") as? Bool ?? true
+        captionTarget = defaults.string(forKey: "captionTarget") ?? "zh-Hans"
         if storedLocalSTT, !storedPTT { defaults.set(true, forKey: "ptt") }
         outputDeviceName = defaults.string(forKey: "outputDevice") ?? "BlackHole"
         talkKey = defaults.string(forKey: "talkKey").flatMap(TalkKey.init(rawValue:)) ?? .fn
@@ -216,6 +249,7 @@ final class HomeModel: ObservableObject {
         startUplink()
         applyPushToTalk()
         if localSTTEnabled { prepareLocalSTT() }
+        if liveCaptionEnabled { startLiveCaption() }
         launchAtLogin = SMAppService.mainApp.status == .enabled
         startControlServer()
         startCloud()
@@ -227,6 +261,10 @@ final class HomeModel: ObservableObject {
             Task { @MainActor in self?.objectWillChange.send(); self?.applyOwnVoice() }
         }
         firmware.log = { [unowned self] in log($0) }
+        offlineModels.log = { [unowned self] in log($0) }
+        offlineModels.inUse = { [unowned self] in localSTTEnabled || liveCaptionEnabled }
+        offlineModels.unload = { [unowned self] in await localSpeech.unload() }
+        offlineModels.captionTarget = { [unowned self] in captionTarget }
         aiPolishWatch = aiPolish.$hasKey.sink { [weak self] _ in
             Task { @MainActor in self?.objectWillChange.send() }  // 菜单里的润色开关跟着 Key 有无启用
         }
@@ -284,6 +322,7 @@ final class HomeModel: ObservableObject {
 
     func shutdown() {
         panRenewal?.cancel()
+        stopLiveCaption()
         cloud.stop()
         control?.stop()
         control = nil

@@ -19,6 +19,27 @@ struct LocalDictationTests {
         }
     }
 
+    @Test func pcmBufferTakeDrainsWhatWasAppended() {
+        let buffer = PCMBuffer()
+        buffer.append(Data([1, 2]))
+        #expect(buffer.take() == Data([1, 2]))
+        #expect(buffer.snapshot().isEmpty)
+        buffer.append(Data([3]))
+        #expect(buffer.take() == Data([3]))
+        #expect(HomeModel.isQuiet(Data(count: 3_200)))
+        let loud = [Int16](repeating: 4_000, count: 1_600).withUnsafeBytes { Data($0) }
+        #expect(!HomeModel.isQuiet(loud))
+    }
+
+    @Test func captionWindowKeepsWholeSentencesAndDropsFillers() {
+        #expect(HomeModel.captionWindow("Um, this lecture, um.In addition, I will mention it. We")
+            == "this lecture, In addition, I will mention it. We")
+        #expect(HomeModel.captionWindow("First one. Second one. Third one.") == "Second one. Third one.")
+        let long = String(repeating: "word ", count: 50)
+        let window = HomeModel.captionWindow(long, limit: 40)
+        #expect(window.count <= 40 && window.hasPrefix("word"))
+    }
+
     @Test func doubaoInputMethodIsDetected() {
         #expect(ActiveInputMethod.isDoubao("com.bytedance.inputmethod.doubaoime"))
         #expect(ActiveInputMethod.isDoubao("com.bytedance.inputmethod.doubaoime.pinyin"))

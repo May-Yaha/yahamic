@@ -89,6 +89,28 @@ struct MenuPanelView: View {
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
+            SectionTitle("视频字幕").padding(.top, PanelSpacing.inner)
+            HStack(spacing: PanelSpacing.section) {
+                Toggle("视频字幕", isOn: $model.liveCaptionEnabled)
+                    .toggleStyle(TileToggleStyle(
+                        symbol: "captions.bubble.fill",
+                        detail: model.liveCaptionEnabled ? "识别本机播放的声音" : "关闭", color: .teal))
+                if model.liveCaptionEnabled {
+                    Toggle("翻译", isOn: $model.captionTranslate)
+                        .toggleStyle(TileToggleStyle(
+                            symbol: "character.bubble.fill",
+                            detail: model.captionTranslate ? "译成" + captionTargetName : "只显示原文", color: .indigo))
+                        .transition(.opacity)
+                }
+            }
+            if model.liveCaptionEnabled && model.captionTranslate {
+                Picker("译成", selection: $model.captionTarget) {
+                    ForEach(HomeModel.captionTargets, id: \.id) { Text($0.name).tag($0.id) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             SectionTitle("输出").padding(.top, PanelSpacing.inner)
             HStack(spacing: PanelSpacing.row) {
                 CircleIcon(symbol: "speaker.wave.2.fill", tint: .accentColor)
@@ -112,6 +134,12 @@ struct MenuPanelView: View {
         }
         .animation(.snappy(duration: 0.25), value: model.pttEnabled)
         .animation(.snappy(duration: 0.25), value: model.localSTTEnabled)
+        .animation(.snappy(duration: 0.25), value: model.liveCaptionEnabled)
+        .animation(.snappy(duration: 0.25), value: model.captionTranslate)
+    }
+
+    private var captionTargetName: String {
+        HomeModel.captionTargets.first { $0.id == model.captionTarget }?.name ?? model.captionTarget
     }
 
     /// 按住讲话开关 + 讲话键合成一块:圆形图标是开关,打开后右侧可选讲话键。
