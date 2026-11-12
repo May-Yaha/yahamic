@@ -78,11 +78,10 @@ final class HomeModel: ObservableObject {
     @Published private(set) var phoneMic = false {
         didSet { if started, !mic.paused, oldValue != phoneMic { startUplink() } }
     }
-    /// iPhone 的广播在这台 Mac 上最近一次消失的时刻;nil + phoneSeen = 正看得到。
-    /// 存在 HomeModel 而不是 Uplink:每次链路重建(重连、刷固件后重启)Uplink 都从「没见过」开始,
-    /// 第一条广播会被当成「刚打开」,把手动切回的设备又抢成手机。
-    private var phoneGoneSince: Date?
-    private var phoneSeen = false
+    /// iPhone 的广播最近一次消失的时刻;nil = 正看得到。初值是启动时刻:iPhone 选了「手机」会一直广播
+    /// (后台也是),启动时已经在的不算刚打开。存在 HomeModel 而不是 Uplink:每次链路重建
+    /// (重连、刷固件后重启)Uplink 都从「没见过」开始,第一条广播会被当成「刚打开」,把设备又抢成手机。
+    private var phoneGoneSince: Date? = Date()
 
     func selectSource(phone: Bool) { phoneMic = phone }
 
@@ -94,9 +93,8 @@ final class HomeModel: ObservableObject {
             if phoneMic { log("iPhone 停止了手机当麦克风,声源切回设备"); phoneMic = false }
             return
         }
-        // 只有新打开才自动切:从没见过,或消失满 1 分钟。一直开着时 Mac 上切回设备就一直有效。
-        let fresh = !phoneSeen || phoneGoneSince.map { Date().timeIntervalSince($0) > 60 } == true
-        phoneSeen = true
+        // 只有新打开才自动切:消失(或启动后没出现)满 1 分钟再出现。一直开着时 Mac 上切回设备就一直有效。
+        let fresh = phoneGoneSince.map { Date().timeIntervalSince($0) > 60 } == true
         phoneGoneSince = nil
         guard fresh, !phoneMic else { return }
         log("iPhone 打开了手机当麦克风,声源切到手机")

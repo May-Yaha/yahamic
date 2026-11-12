@@ -144,7 +144,11 @@ struct LocalDictationTests {
     @Test func phoneOnlyTakesOverWhenFreshlyOpened() {
         let model = HomeModel.shared
         defer { model.selectSource(phone: false) }
-        model.phoneMicChanged(true)  // first sight: the phone was just opened
+        model.phoneMicChanged(true)  // already advertising when the app started
+        #expect(!model.phoneMic)
+        model.selectSource(phone: true)
+        model.phoneMicChanged(false)  // tapped stop on the iPhone
+        model.phoneMicChanged(true)  // tapped start: freshly opened
         #expect(model.phoneMic)
         model.selectSource(phone: false)
         model.phoneMicChanged(true)  // same phone seen again after an uplink rebuild (reconnect, firmware reboot)
