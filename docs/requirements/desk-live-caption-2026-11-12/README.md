@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | 采集系统声音 | Core Audio Process Tap(macOS 14.2+,写法参照开源 [insidegui/AudioCap](https://github.com/insidegui/AudioCap)):全局单声道 tap 排除本进程,挂私有聚合设备 | ScreenCaptureKit 也能取音频,但要屏幕录制权限且带视频流;BlackHole 回环要用户改系统输出 |
 | 识别 | 复用本地听写的 Qwen3-ASR 0.6B 6-bit(`LocalSpeechRecognizer`,模型已缓存约 826 MB,多语种自动识别) | 再引入 Whisper/WhisperKit 要多一份模型;Qwen3 已在本机、离线、中英日韩都能识别 |
-| 翻译 | Apple Translation(`TranslationSession(installedSource:target:)`,离线,免 Key);语言对没装离线包时,填了 AI Key 就走 AI 润色同一个接口翻译 | 系统翻译的语言包只能由用户在系统设置里下载,App 内 `installedSource` 不会自动下载 |
+| 翻译 | Apple Translation(`TranslationSession(installedSource:target:)`,离线,免 Key);语言对没装离线包时,填了 AI Key 就走 AI 润色同一个接口翻译 | `installedSource` 不会自动下载语言包:App 内经 `.translationTask` + `prepareTranslation()` 由系统弹框下载(离线模型页),删除只能在系统设置里 |
 | 显示 | 复用讲话浮层的 `OverlayPanel` 与 `CaptionText`(打字动效),贴在前台 App 最大窗口内底部居中 | — |
 
 豆包输入法不能复用:它只在按住自己的语音键时录**系统默认输入**并上屏到输入框,没有开放的识别接口,

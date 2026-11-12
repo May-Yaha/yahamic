@@ -15,12 +15,17 @@ terminals, WeChat, Electron/Flutter apps). The board streams 16 kHz Opus over BL
 system microphone through BlackHole, so Zoom, FaceTime and QuickTime can use it too. When idle, the 480×480 AMOLED
 touch screen is a desk dashboard (clock, CPU/memory rings, notifications). Firmware: ESP-IDF 6.1 + LVGL 9;
 Mac: Swift 6.2 / SwiftUI, macOS 26. An iPhone app (iOS 26) shows the device status, mutes it remotely and plays back
-recordings. Docs are mostly in Chinese; English issues and PRs are welcome.
+recordings. **Live captions for any video**: the app captures the Mac's system audio (YouTube, Bilibili, Zoom,
+local players; no virtual driver) through a Core Audio process tap, transcribes it offline with the same Qwen3-ASR
+model, translates it with Apple's on-device Translation (or your AI endpoint) and shows bilingual subtitles under
+the video window. Docs are mostly in Chinese; English issues and PRs are welcome.
 
 **中文.** 一块约 ¥250 的乐鑫 ESP32-S3 开发板,刷上固件就是 Mac 的**蓝牙无线麦克风**;配套菜单栏 App 提供
 **按住说话、松开出字**的本地语音输入(Qwen3-ASR + MLX,离线可用)和可选的 **AI 润色**(任意 OpenAI 兼容接口)。
 文字直接写进任意 App 的光标处,可以当 Mac 的离线听写、语音输入法用;也能当系统麦克风给 Zoom、FaceTime、QuickTime 用。
 配套 iPhone App 查看设备状态、远程静音、回放录音。
+**视频实时字幕与翻译**:不用设备也能用,直接采集 Mac 正在播放的声音(YouTube、B 站、网课、会议都行),
+本地 Qwen3-ASR 转文字,Apple 系统离线翻译(或 AI 翻译)成中文,双语字幕贴在视频窗口下方。
 
 ## 演示 / Demo
 
@@ -30,13 +35,15 @@ recordings. Docs are mostly in Chinese; English issues and PRs are welcome.
 按住 Fn 说话、文字落在光标处,声音经加密蓝牙进 Mac,本地转文字与 AI 润色,iPhone 远程静音,设备屏通知,硬件静音。
 画面按 0.5.1 的固件、Mac、iOS 界面重绘,通知文案与 Wi-Fi 名为示例。
 
-**目录**:[亮点](#亮点--features) · [硬件清单](#硬件清单--hardware) · [快速开始](#快速开始--quick-start) · [协议](#协议-v3设备--macble-gatt) · [安全模型](#安全模型) · [使用速查](#使用速查) · [故障排查](#故障排查--troubleshooting) · [参与贡献](#参与贡献)
+**目录**:[亮点](#亮点--features) · [视频字幕](#6-视频实时字幕与翻译看外文视频出中文字幕) · [硬件清单](#硬件清单--hardware) · [快速开始](#快速开始--quick-start) · [协议](#协议-v3设备--macble-gatt) · [安全模型](#安全模型) · [使用速查](#使用速查) · [故障排查](#故障排查--troubleshooting) · [参与贡献](#参与贡献)
 
 ## 亮点 / Features
 
 - **硬件静音**:板上按键一按,一比特音频都不会离开设备;BLE 全程 LE Secure Connections + MITM 配对。
 - **本地语音转文字**:Qwen3-ASR 0.6B 在 Apple Silicon 上实时出字幕,停顿处定稿,不上传语音。
 - **写入任意 App**:辅助功能写入 / 键盘事件 / 剪贴板粘贴三条路自动选择,兼容终端、Electron(Codex)、Flutter(如流)、微信。
+- **视频实时字幕与翻译**:采集本机播放的声音(无需虚拟声卡),本地识别 + 系统离线翻译,中文大字主字幕、原文小字对照,贴在视频下方;看 YouTube 外文视频、网课、外语会议直接出中文字幕。
+- **离线模型管理**:设置里一键下载 / 取消 / 删除 Qwen3-ASR 权重(断点续下),查看并下载字幕翻译用的系统语言包。
 - **AI 润色(可选)**:去口头语、修标点,默认智谱 GLM,可换任意 OpenAI 兼容接口或本机模型服务。
 - **系统麦克风**:经 BlackHole 虚拟声卡,会议、录音软件都能直接选它。
 - **桌面工作台**:480×480 AMOLED 触摸屏显示时钟、Mac 负载、通知卡片。
@@ -56,9 +63,12 @@ recordings. Docs are mostly in Chinese; English issues and PRs are welcome.
 
 关键词:ESP32 microphone, ESP32-S3 BLE audio, Bluetooth microphone, wireless mic for Mac, macOS dictation,
 offline speech-to-text, voice typing, voice input, push-to-talk, Qwen3-ASR, MLX, Apple Silicon,
-Opus, BlackHole virtual microphone, LVGL, ESP-IDF, AMOLED, SwiftUI menu bar app, iOS companion app。
+Opus, BlackHole virtual microphone, LVGL, ESP-IDF, AMOLED, SwiftUI menu bar app, iOS companion app,
+live captions for Mac, real-time subtitles, YouTube subtitles translation, system audio capture, Core Audio process tap,
+on-device translation, Apple Translation framework, bilingual subtitles, offline transcription。
 ESP32 麦克风、蓝牙麦克风、无线麦克风、Mac 语音输入、离线语音转文字、语音听写、按住说话、语音输入法、
-本地 ASR、AI 润色、虚拟麦克风、桌面屏、开源硬件。
+本地 ASR、AI 润色、虚拟麦克风、桌面屏、开源硬件、Mac 实时字幕、视频字幕翻译、YouTube 中文字幕、
+同声传译字幕、外语视频翻译、网课字幕、会议实时字幕、系统内录、双语字幕、离线翻译。
 
 ## 项目背景
 
@@ -280,6 +290,28 @@ Codex(桌面 App 的输入框或终端里的 CLI)不需要额外插件:用 macOS
 
 听写只出文字,不会自动回车;设备静音或未连接时 BlackHole 没有声音,听写会停在空白。
 以上系统听写步骤按 macOS 的公开设置整理,本机未逐项实测。
+
+### 6. 视频实时字幕与翻译(看外文视频出中文字幕)
+
+不需要 ESP32 设备,也不需要 BlackHole。Yaha Desk 用 macOS 14.2+ 的 Core Audio 进程 tap 直接采集**本机正在播放的声音**,
+所以浏览器里的 YouTube、B 站,本地播放器、网课、Zoom/腾讯会议对方的声音都能出字幕。
+
+1. 菜单栏面板 →「视频字幕」打开。首次会弹「录制系统音频」授权,在 系统设置 → 隐私与安全性 → 屏幕与系统录音 → 仅系统录音 里允许 Yaha Desk。
+2. 想要翻译就打开「翻译」,选译成简体中文 / 英语 / 日语 / 韩语。
+3. 播放视频:字幕浮层贴在前台 App 最大窗口的下方。有译文时译文是大字主字幕,原文小字一行对照;静音 2 秒后自动收起。
+
+工作方式:系统声音 → 16 kHz → 本地 Qwen3-ASR(与「本地转文字」共用同一个模型,声音不出本机)→ 按整句取最后两句、去掉 um/uh →
+翻译。原文语言在中、英、日、韩、法、德、西、俄里自动判断,和目标语言相同时不翻。
+
+翻译优先用 **Apple 系统离线翻译**(免费、离线);某个语言对没装语言包、但在设置里填了 AI Key 时,改用同一个 OpenAI 兼容接口翻译(会上传字幕文字)。
+
+**离线模型**:设备设置 → 语音 →「离线模型」:
+
+- **Qwen3-ASR 0.6B**:状态与占用(约 820 MB),下载带进度、可取消、中断后接着下;在访达中显示;删除(本地转文字或视频字幕开着时不让删)。
+- **字幕翻译语言包**:列出每个原文语言 → 目标语言,显示已安装 / 可下载 / 不支持;点「下载」由系统弹框确认,关掉弹框也会在后台继续下,装好后本页自动变「已安装」,字幕立即改走离线翻译。语言包由系统管,删除在 系统设置 → 通用 → 语言与地区 → 翻译语言。
+
+限制:字幕比声音晚约 1–2 秒;按住讲话转文字时字幕会晚一拍(两者串行用同一个模型);画中画、多显示器全屏未专门适配。
+设计与选型(为什么不用豆包输入法、BlackHole、Whisper)见 [docs/requirements/desk-live-caption-2026-11-12](docs/requirements/desk-live-caption-2026-11-12/README.md)。
 
 ## 压测结论与性能账本(2026-11-01)
 
@@ -522,6 +554,8 @@ iPhone「Yaha 桌面」2026-11-07 起不再靠蓝牙看状态：设备每次 `de
 | 刷了新固件，App 仍按旧固件显示（如没有 Wi-Fi 扫描） | 已配对的 Mac 会缓存设备的特征表。固件每次启动发 Service Changed，App 收到后自动重连刷新；仍不行就在系统设置 → 蓝牙里忽略 yahadesk 后重连配对 |
 | 屏幕停在橙色配对数字 | Mac 上的系统配对框被关掉了:断电重启设备再配一次 |
 | 应用里没有 BlackHole 2ch | 面板「安装 BlackHole」一键安装,或 `brew install blackhole-2ch`;仍看不到就 `sudo killall coreaudiod` |
+| 打开视频字幕后日志「系统声音采集启动失败」 | 系统设置 → 隐私与安全性 → 屏幕与系统录音 → 仅系统录音,打开 Yaha Desk 后再开一次「视频字幕」 |
+| 视频字幕只有原文、没有译文 | 设备设置 →「离线模型」下载对应语言包,或在「AI 润色」里填 API Key;日志会提示缺哪个语言对 |
 | 声音卡顿 | 靠近 Mac、避开金属遮挡;控制接口 `status` 看 `rssi` 与 `droppedFrames`,`stress 60` 复现 |
 
 ## 产品演进:从无线麦克风到个人智能中枢
