@@ -21,6 +21,7 @@ final class RecordingBackup: ObservableObject {
     var now: () -> Date = Date.init
     var loginExpired: () -> Void = {}
     let folder: URL
+    let panRoot: String
     lazy var player = TakePlayer { [weak self] in self?.token().flatMap { $0.valid() ? $0.token : nil } }
 
     private var writer: OggOpusWriter?
@@ -32,8 +33,9 @@ final class RecordingBackup: ObservableObject {
     private var closed: [Date: URL] = [:]  // recent takes by start, for text that arrives after the file is written
 
     init(folder: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("YahaDesk/Recordings")) {
+        .appendingPathComponent("YahaDesk/Recordings"), panRoot: String = PanFiles.root) {
         self.folder = folder
+        self.panRoot = panRoot
         pending = takes()
     }
 
@@ -136,7 +138,7 @@ final class RecordingBackup: ObservableObject {
             let relative = url.deletingLastPathComponent().lastPathComponent + "/" + url.lastPathComponent
             let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date()
             do {
-                let stored = try await pan.upload(Data(contentsOf: url), to: PanFiles.root + "/" + relative, modified: modified)
+                let stored = try await pan.upload(Data(contentsOf: url), to: panRoot + "/" + relative, modified: modified)
                 log("录音已备份到网盘 \(stored)")
                 message = nil
                 // Can't delete: stop here instead of re-uploading it forever; the next round renames the duplicate.

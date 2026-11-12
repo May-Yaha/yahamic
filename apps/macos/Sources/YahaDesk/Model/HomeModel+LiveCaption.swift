@@ -1,4 +1,6 @@
+import AVFoundation
 import DeskCore
+import DeskShared
 import Foundation
 import NaturalLanguage
 import Translation
@@ -52,10 +54,27 @@ extension HomeModel {
             var lastLine = ""
             var shown = ""
             var quietSince: Date?
+            // 网盘备份:一段话的声音编成 Opus,转写全文(定稿段 + 末段)随它存成同名 txt。
+            let encoder = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true)
+                .flatMap(MicEncoder.init(input:))
+            var spoken = ""
+            var tailText = ""
+            defer { endCaptionTake(LiveTranscript.join(spoken, tailText)) }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard !Task.isCancelled else { return }
-                pending.append(buffer.take())
+                let chunk = buffer.take()
+                pending.append(chunk)
+                // 连着放不停顿也每 10 分钟切一段,别让一个文件在内存里越攒越大;关了备份就收掉当前这段。
+                if let take = captionRecordings.currentTake, !captionBackup || Date().timeIntervalSince(take) > 600 {
+                    endCaptionTake(LiveTranscript.join(spoken, tailText))
+                    spoken = ""
+                    tailText = ""
+                }
+                if captionBackup, captionRecordings.currentTake == nil, !Self.isQuiet(chunk) { captionRecordings.talking(true) }
+                for packet in encoder?.push(pcm16k: chunk) ?? [] {
+                    captionRecordings.append(packet, samples: MicEncoder.frameSamples)
+                }
                 // 太久不转会越积越长:只留最近 30 秒。
                 if pending.count > 30 * LiveTranscript.bytesPerSecond {
                     pending.removeFirst(pending.count - 30 * LiveTranscript.bytesPerSecond)
@@ -63,6 +82,9 @@ extension HomeModel {
                 if Self.isQuiet(pending.suffix(3 * LiveTranscript.bytesPerSecond / 2)) {
                     quietSince = quietSince ?? Date()
                     if Date().timeIntervalSince(quietSince!) >= 2, !shown.isEmpty || !pending.isEmpty {
+                        endCaptionTake(LiveTranscript.join(spoken, tailText))
+                        spoken = ""
+                        tailText = ""
                         pending = Data()
                         live = LiveTranscript()
                         lastLine = ""
@@ -77,12 +99,15 @@ extension HomeModel {
                     guard let text = try? await localSpeech.transcribe(Data(pending.prefix(end))) else { continue }
                     // 切点在停顿处,多半是半句话:ASR 补的句号去掉,和下一段接成一句再翻。
                     lastLine = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    spoken = LiveTranscript.join(spoken, lastLine)
+                    tailText = ""
                     if lastLine.hasSuffix(".") || lastLine.hasSuffix("。") { lastLine.removeLast() }
                     pending.removeFirst(end)
                     live = LiveTranscript()
                 } else if pending.count >= LiveTranscript.bytesPerSecond / 2 {
                     guard let text = try? await localSpeech.transcribe(pending) else { continue }
                     current = text
+                    tailText = text
                 } else {
                     continue
                 }
@@ -105,6 +130,13 @@ extension HomeModel {
         captionTap?.stop()
         captionTap = nil
         subtitles.hide()
+    }
+
+    /// 一段话结束:有转写就存成同名 txt,再收尾录音(不到 1 秒的不留)。
+    private func endCaptionTake(_ text: String) {
+        guard let take = captionRecordings.currentTake else { return }
+        if !text.isEmpty { captionRecordings.saveTranscript(text, for: take) }
+        captionRecordings.talking(false)
     }
 
     /// 平均绝对幅度低于 300(约 -40 dBFS)当没声音。

@@ -103,6 +103,15 @@ struct MenuPanelView: View {
                         .transition(.opacity)
                 }
             }
+            if model.liveCaptionEnabled {
+                Toggle("备份到网盘", isOn: $model.captionBackup)
+                    .toggleStyle(TileToggleStyle(
+                        symbol: "icloud.and.arrow.up.fill",
+                        detail: !model.cloud.panLoggedIn ? "先在设置里登录网盘"
+                            : model.captionBackup ? "声音与原文传到 录音/视频字幕" : "不录音", color: .blue))
+                    .disabled(!model.cloud.panLoggedIn)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             if model.liveCaptionEnabled && model.captionTranslate {
                 Picker("译成", selection: $model.captionTarget) {
                     ForEach(HomeModel.captionTargets, id: \.id) { Text($0.name).tag($0.id) }

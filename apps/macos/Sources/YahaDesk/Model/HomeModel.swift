@@ -114,6 +114,10 @@ final class HomeModel: ObservableObject {
             captionTranslationChanged()
         }
     }
+    /// 视频字幕听到的声音备份到网盘。默认关:会议里对方的声音也会被录下。
+    @Published var captionBackup: Bool {
+        didSet { defaults.set(captionBackup, forKey: "captionBackup") }
+    }
     /// 字幕翻译的目标语言(BCP 47,见 captionTargets)。
     @Published var captionTarget: String {
         didSet {
@@ -194,6 +198,11 @@ final class HomeModel: ObservableObject {
     let subtitles = SubtitleOverlay()
     let cloud = CloudSync()
     let recordings = RecordingBackup()
+    /// 视频字幕听到的系统声音,按一段话(静音 2 秒为界)存一份 opus + 转写 txt,传到网盘「录音/视频字幕」。
+    let captionRecordings = RecordingBackup(
+        folder: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("YahaDesk/CaptionRecordings"),
+        panRoot: PanFiles.root + "/视频字幕")
     let voiceProfile = VoiceProfile()
     let firmware = FirmwareInstaller()
     let aiPolish = AIPolish()
@@ -214,6 +223,7 @@ final class HomeModel: ObservableObject {
         ownVoiceOnly = defaults.object(forKey: "ownVoiceOnly") as? Bool ?? true
         liveCaptionEnabled = defaults.bool(forKey: "liveCaption")
         captionTranslate = defaults.object(forKey: "captionTranslate") as? Bool ?? true
+        captionBackup = defaults.bool(forKey: "captionBackup")
         captionTarget = defaults.string(forKey: "captionTarget") ?? "zh-Hans"
         if storedLocalSTT, !storedPTT { defaults.set(true, forKey: "ptt") }
         outputDeviceName = defaults.string(forKey: "outputDevice") ?? "BlackHole"
@@ -255,6 +265,9 @@ final class HomeModel: ObservableObject {
         startCloud()
         recordings.log = { [unowned self] in log($0) }
         recordings.loginExpired = { [unowned self] in cloud.panLoginExpired() }
+        captionRecordings.log = { [unowned self] in log($0) }
+        captionRecordings.loginExpired = { [unowned self] in cloud.panLoginExpired() }
+        captionRecordings.tail = .zero  // 段尾已是 2 秒静音,不用再等
         voiceProfile.log = { [unowned self] in log($0) }
         // @Published 在赋值前发出:切回主线程下一拍再读,拿到的是新档案。
         voiceProfileWatch = voiceProfile.$manifest.sink { [weak self] _ in
@@ -278,6 +291,7 @@ final class HomeModel: ObservableObject {
             while !Task.isCancelled {
                 await self?.cloud.renewPan()
                 await self?.recordings.upload()
+                await self?.captionRecordings.upload()
                 try? await Task.sleep(for: .seconds(6 * 3600))
             }
         }

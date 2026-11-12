@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import MLXAudioSTT
 import Testing
@@ -38,6 +39,16 @@ struct LocalDictationTests {
         let long = String(repeating: "word ", count: 50)
         let window = HomeModel.captionWindow(long, limit: 40)
         #expect(window.count <= 40 && window.hasPrefix("word"))
+    }
+
+    @Test func systemAudioPCMEncodesToSixtyMillisecondOpusFrames() throws {
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1,
+                                                interleaved: true))
+        let encoder = try #require(MicEncoder(input: format))
+        let tone = (0..<2_000).map { Int16(8_000 * sin(Double($0) * 2 * .pi * 440 / 16_000)) }
+        let pcm = tone.withUnsafeBytes { Data($0) }
+        #expect(encoder.push(pcm16k: pcm).count == 2)  // 2 000 samples: two 960-sample frames, 80 kept
+        #expect(encoder.push(pcm16k: pcm).count == 2)
     }
 
     @Test func doubaoInputMethodIsDetected() {
