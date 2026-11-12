@@ -112,6 +112,26 @@ struct MenuPanelView: View {
                     .disabled(!model.cloud.panLoggedIn)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
+            if model.liveCaptionEnabled {
+                HStack(spacing: PanelSpacing.row) {
+                    CircleIcon(symbol: "textformat.size", tint: .accentColor)
+                    Text("字幕大小").font(.subheadline.weight(.medium))
+                    Spacer(minLength: 0)
+                    Slider(value: $model.captionFontSize, in: SubtitleOverlay.fontSizes, step: 2) {
+                        Text("字幕大小")
+                    } minimumValueLabel: {
+                        Image(systemName: "textformat.size.smaller")
+                    } maximumValueLabel: {
+                        Image(systemName: "textformat.size.larger")
+                    }
+                    .labelsHidden()
+                    .frame(width: 150)
+                    Text("\(Int(model.captionFontSize))").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        .frame(width: 20, alignment: .trailing)
+                }
+                .controlTile()
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             if model.liveCaptionEnabled && model.captionTranslate {
                 Picker("译成", selection: $model.captionTarget) {
                     ForEach(HomeModel.captionTargets, id: \.id) { Text($0.name).tag($0.id) }

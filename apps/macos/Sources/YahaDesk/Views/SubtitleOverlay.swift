@@ -5,22 +5,26 @@ import SwiftUI
 // 与讲话浮层同款非激活、不接鼠标的玻璃面板,不抢焦点、不挡点击。
 @MainActor
 final class SubtitleOverlay: ObservableObject {
-    static let height: CGFloat = 110
-    @Published private(set) var original = ""
-    @Published private(set) var translation = ""
+    static let defaultFontSize = 22.0
+    static let fontSizes = 14.0...44.0
+    @Published private(set) var caption: CaptionQueue.Caption?
     @Published private(set) var width: CGFloat = 900
+    @Published var fontSize = defaultFontSize {
+        didSet { if caption != nil { place() } }
+    }
 
     private var panel: OverlayPanel?
 
-    func show(original: String, translation: String) {
-        self.original = original
-        self.translation = translation
+    /// 主字幕两行 + 对照一行 + 内边距,随字号变。
+    var height: CGFloat { (fontSize * 1.3 * 2 + fontSize * 0.7 * 1.3 + 32).rounded() }
+
+    func show(_ caption: CaptionQueue.Caption) {
+        self.caption = caption
         place()
     }
 
     func hide() {
-        original = ""
-        translation = ""
+        caption = nil
         panel?.orderOut(nil)
     }
 
@@ -30,19 +34,22 @@ final class SubtitleOverlay: ObservableObject {
         self.panel = panel
         let frame: NSRect
         if let window = Self.frontWindow() {
-            let width = min(window.width - 40, 900)
-            frame = NSRect(x: window.midX - width / 2, y: window.minY + 48, width: width, height: Self.height)
+            let width = min(window.width - 40, maxWidth)
+            frame = NSRect(x: window.midX - width / 2, y: window.minY + 48, width: width, height: height)
         } else {
             let mouse = NSEvent.mouseLocation
             let area = (NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main)?.visibleFrame
                 ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-            let width = min(area.width - 40, 900)
-            frame = NSRect(x: area.midX - width / 2, y: area.minY + 48, width: width, height: Self.height)
+            let width = min(area.width - 40, maxWidth)
+            frame = NSRect(x: area.midX - width / 2, y: area.minY + 48, width: width, height: height)
         }
         if width != frame.width { width = frame.width }
         panel.setFrame(frame, display: false)
         panel.orderFrontRegardless()
     }
+
+    /// 一行约 50 个拉丁字母(25 个汉字),字大了浮层跟着宽。
+    private var maxWidth: CGFloat { max(900, fontSize * 26) }
 
     /// 前台 App(不是本 App)在屏上的最大普通窗口,换成 AppKit 坐标(左下原点)。
     private static func frontWindow() -> NSRect? {
@@ -65,7 +72,7 @@ final class SubtitleOverlay: ObservableObject {
     }
 
     private func makePanel() -> OverlayPanel {
-        let panel = OverlayPanel(contentRect: NSRect(x: 0, y: 0, width: width, height: Self.height),
+        let panel = OverlayPanel(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
                                  styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
@@ -84,25 +91,27 @@ private struct SubtitleView: View {
     var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
-            if !overlay.original.isEmpty {
+            if let caption = overlay.caption {
+                let size = overlay.fontSize
                 VStack(spacing: 4) {
                     // 有译文时译文是主字幕,原文缩小放下面对照。
-                    if overlay.translation.isEmpty {
-                        CaptionText(text: overlay.original, font: .title3.weight(.medium), lines: 2)
+                    if caption.translation.isEmpty {
+                        CaptionText(text: caption.original, font: .system(size: size, weight: .medium), lines: 2)
                     } else {
-                        Text(overlay.translation).font(.title3.weight(.medium))
+                        Text(caption.translation).font(.system(size: size, weight: .medium))
                             .lineLimit(2).truncationMode(.head)
-                        Text(overlay.original).font(.callout).foregroundStyle(.secondary)
+                        Text(caption.original).font(.system(size: size * 0.7)).foregroundStyle(.secondary)
                             .lineLimit(1).truncationMode(.head)
                     }
                 }
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 18).padding(.vertical, 10)
                 .glassEffect(.regular, in: .rect(cornerRadius: 14))
+                .id(caption.id)  // 换句整屏淡入淡出;同一句里长字走 CaptionText 打字动效
                 .transition(.opacity)
             }
         }
-        .animation(.smooth(duration: 0.25), value: overlay.translation)
-        .frame(width: overlay.width, height: SubtitleOverlay.height)
+        .animation(.easeInOut(duration: 0.2), value: overlay.caption?.id)
+        .frame(width: overlay.width, height: overlay.height)
     }
 }

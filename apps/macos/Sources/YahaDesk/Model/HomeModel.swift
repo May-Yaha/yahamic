@@ -125,6 +125,13 @@ final class HomeModel: ObservableObject {
             captionTranslationChanged()
         }
     }
+    /// 字幕字号(pt),面板里 A- / A+ 调。
+    @Published var captionFontSize: Double {
+        didSet {
+            defaults.set(captionFontSize, forKey: "captionFontSize")
+            subtitles.fontSize = captionFontSize
+        }
+    }
     /// 按住讲话的键。HHKB 的 Fn 不上报 macOS,改选一颗修饰键。
     @Published var talkKey: TalkKey {
         didSet {
@@ -171,7 +178,10 @@ final class HomeModel: ObservableObject {
     var captionTranslateTask: Task<Void, Never>?
     var captionSessions: [String: TranslationSession] = [:]  // 按原文语言缓存
     var captionPairStatus: [String: LanguageAvailability.Status] = [:]  // 「en→zh-Hans」是否已装离线语言包
-    var captionPendingText: String?  // 等着翻的最新一句
+    var captionPendingLines: [String] = []  // 等着翻的定稿句
+    var captionDisplayTask: Task<Void, Never>?
+    var captionQueue = CaptionQueue()
+    var captionPartial = ""  // 正在讲、还没定稿的半句
     var captionMissingPairs = Set<String>()  // 缺翻译语言包的语言对只提示一次
     private var ownVoiceStream: OwnVoiceStream?
     private var voiceProfileWatch: AnyCancellable?
@@ -225,6 +235,7 @@ final class HomeModel: ObservableObject {
         captionTranslate = defaults.object(forKey: "captionTranslate") as? Bool ?? true
         captionBackup = defaults.bool(forKey: "captionBackup")
         captionTarget = defaults.string(forKey: "captionTarget") ?? "zh-Hans"
+        captionFontSize = defaults.object(forKey: "captionFontSize") as? Double ?? SubtitleOverlay.defaultFontSize
         if storedLocalSTT, !storedPTT { defaults.set(true, forKey: "ptt") }
         outputDeviceName = defaults.string(forKey: "outputDevice") ?? "BlackHole"
         talkKey = defaults.string(forKey: "talkKey").flatMap(TalkKey.init(rawValue:)) ?? .fn
@@ -268,6 +279,7 @@ final class HomeModel: ObservableObject {
         captionRecordings.log = { [unowned self] in log($0) }
         captionRecordings.loginExpired = { [unowned self] in cloud.panLoginExpired() }
         captionRecordings.tail = .zero  // 段尾已是 2 秒静音,不用再等
+        subtitles.fontSize = captionFontSize
         voiceProfile.log = { [unowned self] in log($0) }
         // @Published 在赋值前发出:切回主线程下一拍再读,拿到的是新档案。
         voiceProfileWatch = voiceProfile.$manifest.sink { [weak self] _ in
