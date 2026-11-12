@@ -31,8 +31,8 @@ targets:
         CFBundleDisplayName: Yaha Desk
         CFBundleIdentifier: com.yaha.desk  # 与 Mac 同一 bundle id
         # 必须是字符串:写成数字时 CFNetwork 拼 User-Agent 会崩(首个网络请求即闪退)。
-        CFBundleShortVersionString: "0.5.3"  # 与 Mac、固件同版(make-app.sh 校验)
-        CFBundleVersion: "0.5.3"
+        CFBundleShortVersionString: "0.5.4"  # 与 Mac、固件同版(make-app.sh 校验)
+        CFBundleVersion: "0.5.4"
         UILaunchScreen: {}
         # 折叠屏展开、横放都要能用:放开横屏,宽屏下左右分栏(见 ContentView)。
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
