@@ -96,23 +96,27 @@ struct HomeView: View {
                     Label("切换 Wi-Fi", systemImage: "wifi").labelStyle(.badge(.blue))
                 }
             }
-            Group {
-                Button { Task { await cloud.mute(panToken: recordings.token) } } label: {
-                    Label("静音", systemImage: "mic.slash.fill").labelStyle(.badge(.red))
-                }
-                .disabled(remoteBlocked != nil || cloud.busy || cloud.status?.muted == true)
-                Button { composing = true } label: {
-                    Label("发送卡片", systemImage: "rectangle.on.rectangle").labelStyle(.badge(.orange))
-                }
-                .disabled(remoteBlocked != nil)
+            Button { Task { await cloud.mute(panToken: recordings.token) } } label: {
+                Label("静音", systemImage: "mic.slash.fill").labelStyle(.badge(.red))
             }
+            .disabled(remoteBlocked != nil || cloud.busy || cloud.status?.muted == true)
             .foregroundStyle(remoteBlocked == nil ? Color.primary : Color.secondary)  // 列表里禁用的按钮文字不会自动变灰
         } header: { Text("常用") } footer: {
-            Text(remoteBlocked ?? "静音与卡片经网盘设备服务下发，不用靠近设备；远程只能静音，不能开麦。")
+            Text(remoteBlocked ?? "静音经网盘设备服务下发，不用靠近设备；远程只能静音，不能开麦。")
         }
         Section("设置") {
             NavigationLink { DeviceManageView() } label: { Label("设备管理", systemImage: "gearshape.fill").labelStyle(.badge(.gray)) }
             aiSummaryLink
+        }
+        // 实验功能单独一组，排在最后（见 ROADMAP.md 的功能分层）。
+        Section {
+            Button { composing = true } label: {
+                Label("发送卡片", systemImage: "rectangle.on.rectangle").labelStyle(.badge(.orange))
+            }
+            .disabled(remoteBlocked != nil)
+            .foregroundStyle(remoteBlocked == nil ? Color.primary : Color.secondary)
+        } header: { Text("实验功能") } footer: {
+            Text("把一段文字发到设备屏幕上显示，经网盘设备服务下发。")
         }
     }
 

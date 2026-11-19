@@ -25,11 +25,12 @@ struct DeviceSetupView: View {
     enum Pane: CaseIterable, Identifiable {
         case device, firmware, wifi, voice, models, aiPolish, labeling, pan, recordings, workbench
         var id: Self { self }
-        /// 侧栏三组:设备本身 → 语音处理 → 云与数据。
+        /// 侧栏四组:设备本身 → 语音处理 → 云与数据 → 实验功能(不属于语音输入与 AI 字幕两条主线的,见 ROADMAP.md)。
         static let groups: [(title: String, panes: [Pane])] = [
             ("设备", [.device, .firmware, .wifi]),
-            ("语音", [.voice, .models, .aiPolish, .labeling]),
-            ("云与数据", [.pan, .recordings, .workbench]),
+            ("语音", [.models, .aiPolish]),
+            ("云与数据", [.pan, .recordings]),
+            ("实验功能", [.voice, .labeling, .workbench]),
         ]
         var title: String {
             switch self {

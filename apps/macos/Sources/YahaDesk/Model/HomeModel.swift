@@ -114,7 +114,7 @@ final class HomeModel: ObservableObject {
             captionTranslationChanged()
         }
     }
-    /// 视频字幕听到的声音备份到网盘。默认关:会议里对方的声音也会被录下。
+    /// 视频字幕听到的声音备份到网盘。默认开(登录网盘后才真的录);会议里对方的声音也会被录下,面板上可关。
     @Published var captionBackup: Bool {
         didSet { defaults.set(captionBackup, forKey: "captionBackup") }
     }
@@ -233,7 +233,7 @@ final class HomeModel: ObservableObject {
         ownVoiceOnly = defaults.object(forKey: "ownVoiceOnly") as? Bool ?? true
         liveCaptionEnabled = defaults.bool(forKey: "liveCaption")
         captionTranslate = defaults.object(forKey: "captionTranslate") as? Bool ?? true
-        captionBackup = defaults.bool(forKey: "captionBackup")
+        captionBackup = defaults.object(forKey: "captionBackup") as? Bool ?? true
         captionTarget = defaults.string(forKey: "captionTarget") ?? "zh-Hans"
         captionFontSize = defaults.object(forKey: "captionFontSize") as? Double ?? SubtitleOverlay.defaultFontSize
         if storedLocalSTT, !storedPTT { defaults.set(true, forKey: "ptt") }

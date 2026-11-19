@@ -1,7 +1,7 @@
 import SwiftUI
 import DeskCore
 
-// 菜单栏下拉面板,控制中心风格:提醒 → 麦克风(主角)→ 讲话 → 转文字 → 输出 → 联网入口与日志。
+// 菜单栏下拉面板,控制中心风格:提醒 → 麦克风(主角)→ 讲话 → 转文字 → 视频字幕 → 输出 → 实验功能 → 联网入口与日志。
 struct MenuPanelView: View {
     @EnvironmentObject private var model: HomeModel
     @State private var showLogs = false
@@ -59,7 +59,7 @@ struct MenuPanelView: View {
         }
     }
 
-    /// 按任务顺序分三组:讲话 → 转文字 → 输出。只在某个选项下才有意义的开关跟着它显隐,不常驻成灰块。
+    /// 按任务顺序分组:讲话 → 转文字 → 视频字幕 → 输出 → 实验功能。只在某个选项下才有意义的开关跟着它显隐,不常驻成灰块。
     private var settings: some View {
         VStack(alignment: .leading, spacing: PanelSpacing.row) {
             SectionTitle("讲话")
@@ -67,7 +67,10 @@ struct MenuPanelView: View {
             SectionTitle("转文字").padding(.top, PanelSpacing.inner)
             VStack(alignment: .leading, spacing: PanelSpacing.inner) {
                 Picker("转文字", selection: dictation) {
-                    ForEach(Dictation.allCases, id: \.self) { Text($0.title).tag($0) }
+                    // 豆包是实验功能:本机没装豆包输入法就不出现这一项。
+                    ForEach(Dictation.allCases.filter { $0 != .doubao || model.doubaoInstalled }, id: \.self) {
+                        Text($0.title).tag($0)
+                    }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -108,7 +111,7 @@ struct MenuPanelView: View {
                     .toggleStyle(TileToggleStyle(
                         symbol: "icloud.and.arrow.up.fill",
                         detail: !model.cloud.panLoggedIn ? "先在设置里登录网盘"
-                            : model.captionBackup ? "声音与原文传到 录音/视频字幕" : "不录音", color: .blue))
+                            : model.captionBackup ? "播放的声音(含会议对方)与原文传到网盘" : "不录音", color: .blue))
                     .disabled(!model.cloud.panLoggedIn)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -153,7 +156,8 @@ struct MenuPanelView: View {
                 .fixedSize()
             }
             .controlTile()
-            // 同时作用于 BlackHole 一路和本地转文字,所以放输出组。
+            // 实验功能单独一组,排在最后(见 ROADMAP.md 的功能分层)。
+            SectionTitle("实验功能").padding(.top, PanelSpacing.inner)
             Toggle("只留本人声音", isOn: $model.ownVoiceOnly)
                 .toggleStyle(TileToggleStyle(
                     symbol: "person.wave.2.fill",
@@ -229,7 +233,7 @@ struct MenuPanelView: View {
     private var dictationDetail: String {
         if model.localSTTEnabled { return "本地 Qwen3 · " + model.localSTTState.detail }
         if model.doubaoEnabled { return "豆包输入法识别上屏" }
-        return model.doubaoInstalled ? "只送声,不转文字" : "只送声,不转文字;豆包输入法本机未安装"
+        return "只送声,不转文字"
     }
 
     private var deviceNames: [String] {
