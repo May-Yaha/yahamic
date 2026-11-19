@@ -3,7 +3,7 @@ import Dispatch
 import Foundation
 import DeskProtocol
 
-// 设备到 Mac 的 BLE 直连(协议 v3,规范见 README「协议 v3」,固件侧 firmware/main/uplink.cpp):
+// 设备到 Mac 的 BLE 直连(协议 v3,规范见 docs/protocol.md,固件侧 firmware/main/uplink.cpp):
 // 扫描 yahadesk service → 连接 → 读 info → 订阅 audio/status → 写当前静音状态。
 // 链路加密与配对全交给系统蓝牙(LE Secure Connections + 设备屏幕上的 6 位数),这里不碰密钥。
 // CBCentralManager 与全部可变状态都在 queue 上;对外属性的 setter 也经 queue.sync 落地,

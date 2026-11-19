@@ -9,7 +9,7 @@
 // Yaha Desk 连上后订阅 audio(60 ms 一帧 Opus,按 MTU 分片 notify)与 status,
 // 写 control(静音 / 屏幕回传)与 dashboard。所有特征要求加密 + MITM 认证:
 // 首次连接由系统蓝牙配对完成(设备屏幕显示 6 位数,Mac 弹框输入),bond 存 NVS。
-// 规范见 README「协议 v3」。
+// 规范见 docs/protocol.md。
 namespace uplink {
 
 // 主循环每周期拉取(24-30 fps 目标节奏),用于组屏幕与日志。

@@ -2,7 +2,7 @@
 // macOS 与 iOS 两端共用的 Swift 代码:
 //   DeskProtocol:BLE 线格式、配网、Ogg Opus 等纯逻辑(可单测,测试在 ../macos/Tests)。
 //   DeskShared:网盘登录/文件、DMS、云端授权、录音回放与 AI 整理等两端都用的服务和视图。
-// Android 不复用这里的代码,与固件、Mac 对齐的是 BLE 协议本身(README 协议表)。
+// Android 不复用这里的代码,与固件、Mac 对齐的是 BLE 协议本身(docs/protocol.md)。
 import PackageDescription
 
 let package = Package(

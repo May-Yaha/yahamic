@@ -21,7 +21,7 @@
 
 extern "C" void ble_store_config_init(void);
 
-// 协议 v3(README「协议 v3」是规范),NimBLE 外设,结构照 ESP-IDF 的 bleprph 示例:
+// 协议 v3(docs/protocol.md 是规范),NimBLE 外设,结构照 ESP-IDF 的 bleprph 示例:
 //   info(read)      "fw X\nrate 16000\nframe 60\ncodec opus\n"
 //   audio(notify)   seq u16 LE ‖ frag u8(低 7 位片序号,bit7 末片)‖ Opus 分片
 //   status(read+notify) muted u8

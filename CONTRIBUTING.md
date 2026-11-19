@@ -28,7 +28,7 @@ cd firmware && idf.py build                             # 固件(需 ESP-IDF)
 - 跟随周围代码的命名、注释密度与写法;一个 PR 做一件事。
 - 提交信息用 `feat:` / `fix:` / `docs:` 等前缀。
 - 不提交任何密钥、令牌、设备出厂证书或个人设备信息(MAC、串口、Wi-Fi 名)。
-- 涉及 BLE 协议(`firmware/main/uplink.cpp` 与 `apps/shared/Sources/DeskProtocol/`)的改动两端一起改,并更新 README 的协议表。
-- 云端相关功能依赖官方服务 `hub.flyaha.top`(见 README「云端依赖说明」),外部贡献者无法端到端验证,PR 里说明验证到哪一步即可。
+- 涉及 BLE 协议(`firmware/main/uplink.cpp` 与 `apps/shared/Sources/DeskProtocol/`)的改动两端一起改,并更新 [docs/protocol.md](docs/protocol.md) 的协议表。
+- 云端相关功能依赖官方服务 `hub.flyaha.top`(见 README「云端与桌面工作台」),外部贡献者无法端到端验证,PR 里说明验证到哪一步即可。
 
 贡献的代码按 GPL-3.0 授权。

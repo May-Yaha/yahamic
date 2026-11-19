@@ -1,6 +1,6 @@
 import Foundation
 
-// 协议 v3:BLE GATT,规范见 README「协议 v3」,固件侧是 firmware/main/uplink.cpp。
+// 协议 v3:BLE GATT,规范见 docs/protocol.md,固件侧是 firmware/main/uplink.cpp。
 // 这里只有纯逻辑(UUID、audio 分片重组、写入载荷编码),CoreBluetooth 在 DeskCore。
 public enum Wire {
     public static let version: UInt8 = 3
