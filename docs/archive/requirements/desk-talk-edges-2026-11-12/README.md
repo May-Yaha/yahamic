@@ -33,7 +33,7 @@
 ## 未改
 
 - 固件首帧上电瞬态仍整帧丢弃(约 60 ms)。codec 常开曾被怀疑导致豆包重复出字而回退
-  (见[归档](../../archive/requirements/desk-voice-repeat-2026-11-06/README.md)),这次不动;
+  (见[归档](../desk-voice-repeat-2026-11-06/README.md)),这次不动;
   开头主要靠默认输入设对解决,仍建议按下后稍停再开口。
 
 ## 验证

@@ -4,7 +4,7 @@
 
 ## 可行性结论（2026-11-11）
 
-验证工程与原始数据见 [test/phone-mic-ptt](../../../test/phone-mic-ptt/README.md)。
+验证工程与原始数据见 [test/phone-mic-ptt](../../../../test/phone-mic-ptt/README.md)。
 
 - PushToTalk 框架在锁屏下可由 BLE 讲话键触发 `requestBeginTransmitting`，两条路线锁屏 10 轮无一被拒，首包约 930–1090 ms。
 - 选路线 A：手机模拟 yahadesk 外设，Mac 沿用现有 `Uplink` 写 control，不新增中心角色。

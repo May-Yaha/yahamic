@@ -1,6 +1,6 @@
-# Yaha Desk — ESP32-S3 蓝牙无线麦克风 + Mac 离线语音输入
+# Yaha Desk — Mac 开源离线语音输入与 AI 字幕
 
-**Open-source ESP32-S3 BLE wireless microphone and offline push-to-talk voice typing for macOS, with an iPhone companion app.**
+**Open-source offline voice typing and live AI captions for macOS. The microphone can be an iPhone or a ¥250 ESP32-S3 desk device with a hardware mute button.**
 
 [![CI](https://github.com/May-Yaha/yahamic/actions/workflows/ci.yml/badge.svg)](https://github.com/May-Yaha/yahamic/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
@@ -8,24 +8,42 @@
 ![Swift](https://img.shields.io/badge/Swift-6.2-orange)
 ![ESP-IDF](https://img.shields.io/badge/ESP--IDF-6.1-red)
 
-**English.** An open-source **ESP32-S3 wireless Bluetooth (BLE) microphone for macOS**, plus a menu-bar app with
-**push-to-talk local speech-to-text** (Qwen3-ASR on Apple MLX, fully offline) and optional **AI polish** through any
-OpenAI-compatible API. Hold a key, speak, release: the text lands in the focused input of any app (Codex, Claude Code,
-terminals, WeChat, Electron/Flutter apps). The board streams 16 kHz Opus over BLE GATT; the Mac exposes it as a
-system microphone through BlackHole, so Zoom, FaceTime and QuickTime can use it too. When idle, the 480×480 AMOLED
-touch screen is a desk dashboard (clock, CPU/memory rings, notifications). Firmware: ESP-IDF 6.1 + LVGL 9;
-Mac: Swift 6.2 / SwiftUI, macOS 26. An iPhone app (iOS 26) shows the device status, mutes it remotely and plays back
-recordings. **Live captions for any video**: the app captures the Mac's system audio (YouTube, Bilibili, Zoom,
-local players; no virtual driver) through a Core Audio process tap, transcribes it offline with the same Qwen3-ASR
-model, translates it with Apple's on-device Translation (or your AI endpoint) and shows bilingual subtitles under
-the video window. Docs are mostly in Chinese; English issues and PRs are welcome.
+**中文.** Yaha Desk 是 Mac 菜单栏 App,做两件事,语音识别都在本机完成(Qwen3-ASR + MLX,离线可用):
 
-**中文.** 一块约 ¥250 的乐鑫 ESP32-S3 开发板,刷上固件就是 Mac 的**蓝牙无线麦克风**;配套菜单栏 App 提供
-**按住说话、松开出字**的本地语音输入(Qwen3-ASR + MLX,离线可用)和可选的 **AI 润色**(任意 OpenAI 兼容接口)。
-文字直接写进任意 App 的光标处,可以当 Mac 的离线听写、语音输入法用;也能当系统麦克风给 Zoom、FaceTime、QuickTime 用。
-配套 iPhone App 查看设备状态、远程静音、回放录音。
-**视频实时字幕与翻译**:不用设备也能用,直接采集 Mac 正在播放的声音(YouTube、B 站、网课、会议都行),
-本地 Qwen3-ASR 转文字,Apple 系统离线翻译(或 AI 翻译)成中文,双语字幕贴在视频窗口下方。
+- **语音输入**:按住讲话键说话,松开出字,文字写进任意 App 的光标处(Codex、Claude Code、终端、微信、Electron/Flutter 应用),
+  可以当 Mac 的离线听写、语音输入法用;可选 **AI 润色**(任意 OpenAI 兼容接口)。
+- **AI 字幕**:直接采集 Mac 正在播放的声音(YouTube、B 站、网课、会议都行),本地转文字,
+  Apple 系统离线翻译(或 AI 翻译)成中文,双语字幕贴在视频窗口下方。不需要任何硬件。
+
+语音输入的麦克风有两种:**iPhone**(配套 App,锁屏也能讲),或一块约 ¥250 的乐鑫 **ESP32-S3 开发板**
+(刷上固件就是带硬件静音键和触摸屏的**蓝牙无线麦克风**,也能当系统麦克风给 Zoom、FaceTime、QuickTime 用)。
+登录百度网盘后,按住讲话的录音和文字自动备份到你自己的网盘,AI 字幕的录音在面板打开「备份到网盘」后备份;
+iPhone 上按天回放,并整理成 AI 工作总结。
+
+产品名是 Yaha Desk;仓库名 yahamic 沿用自早期的 Wi-Fi 麦克风。产品定位与迭代路线见 [ROADMAP.md](ROADMAP.md)。
+
+**English.** Yaha Desk is a macOS menu-bar app that does two things, with speech recognition running on-device
+(Qwen3-ASR on Apple MLX, fully offline). **Voice typing**: hold a key, speak, release, and the text lands in the
+focused input of any app (Codex, Claude Code, terminals, WeChat, Electron/Flutter apps), with optional **AI polish**
+through any OpenAI-compatible API. **Live AI captions for any video**: the app captures the Mac's system audio
+(YouTube, Bilibili, Zoom, local players; no virtual driver) through a Core Audio process tap, transcribes it with the
+same model, translates it with Apple's on-device Translation (or your AI endpoint) and shows bilingual subtitles under
+the video window; no hardware needed. The microphone for voice typing is an **iPhone** (companion app, works with the
+screen locked) or an open-source **ESP32-S3 wireless Bluetooth (BLE) microphone**: the board streams 16 kHz Opus over
+BLE GATT, has a hardware mute button and a 480×480 AMOLED touch screen that works as a desk dashboard, and shows up as
+a system microphone through BlackHole for Zoom, FaceTime and QuickTime. Recordings and transcripts can be backed up to
+your own Baidu Pan and replayed on the iPhone with an AI daily summary. Firmware: ESP-IDF 6.1 + LVGL 9; Mac: Swift 6.2 /
+SwiftUI, macOS 26; iPhone: iOS 26. Docs are mostly in Chinese; English issues and PRs are welcome.
+
+## 从哪开始 / Get started
+
+| 你手上有 | 能用什么 | 怎么开始 |
+|---|---|---|
+| 一台 Mac(Apple 芯片,macOS 26) | AI 字幕与翻译 | 到 [Releases](https://github.com/May-Yaha/yahamic/releases) 下载 DMG,菜单栏面板打开「视频字幕」;用法见[视频字幕](#6-视频实时字幕与翻译看外文视频出中文字幕) |
+| Mac + iPhone(iOS 26) | 语音输入,手机当麦克风 | iPhone App 正在准备上架 App Store,目前用 Xcode 自行构建(见 [CONTRIBUTING.md](CONTRIBUTING.md));Mac 面板的声源选「手机」 |
+| Mac + ESP32-S3 开发板 | 语音输入、硬件静音、桌面屏 | 按[快速开始](#快速开始--quick-start)装 Mac App、刷固件、蓝牙配对 |
+
+Mac 目前还不能用自带麦克风做语音输入,这一项排在 [ROADMAP.md](ROADMAP.md) 的阶段 2。
 
 ## 演示 / Demo
 
@@ -35,20 +53,35 @@ the video window. Docs are mostly in Chinese; English issues and PRs are welcome
 按住 Fn 说话、文字落在光标处,声音经加密蓝牙进 Mac,本地转文字与 AI 润色,iPhone 远程静音,设备屏通知,硬件静音。
 画面按 0.5.1 的固件、Mac、iOS 界面重绘,通知文案与 Wi-Fi 名为示例。
 
-**目录**:[亮点](#亮点--features) · [视频字幕](#6-视频实时字幕与翻译看外文视频出中文字幕) · [硬件清单](#硬件清单--hardware) · [快速开始](#快速开始--quick-start) · [协议](#协议-v3设备--macble-gatt) · [安全模型](#安全模型) · [使用速查](#使用速查) · [故障排查](#故障排查--troubleshooting) · [参与贡献](#参与贡献)
+**目录**:[从哪开始](#从哪开始--get-started) · [亮点](#亮点--features) · [路线图](ROADMAP.md) · [视频字幕](#6-视频实时字幕与翻译看外文视频出中文字幕) · [硬件清单](#硬件清单--hardware) · [快速开始](#快速开始--quick-start) · [协议](#协议-v3设备--macble-gatt) · [安全模型](#安全模型) · [使用速查](#使用速查) · [故障排查](#故障排查--troubleshooting) · [参与贡献](#参与贡献)
 
 ## 亮点 / Features
 
-- **硬件静音**:板上按键一按,一比特音频都不会离开设备;BLE 全程 LE Secure Connections + MITM 配对。
+**语音输入**
+
 - **本地语音转文字**:Qwen3-ASR 0.6B 在 Apple Silicon 上实时出字幕,停顿处定稿,不上传语音。
 - **写入任意 App**:辅助功能写入 / 键盘事件 / 剪贴板粘贴三条路自动选择,兼容终端、Electron(Codex)、Flutter(如流)、微信。
+- **AI 润色(可选)**:去口头语、修标点,默认智谱 GLM,可换任意 OpenAI 兼容接口或本机模型服务。
+- **手机当麦克风**:没有设备也能用,iPhone 经 PushToTalk 采集(锁屏可用)、经加密蓝牙传给 Mac,沿用 Mac 讲话键。
+- **硬件静音**:板上按键一按,一比特音频都不会离开设备;BLE 全程 LE Secure Connections + MITM 配对。
+- **系统麦克风**:经 BlackHole 虚拟声卡,会议、录音软件都能直接选它。
+
+**AI 字幕**
+
 - **视频实时字幕与翻译**:采集本机播放的声音(无需虚拟声卡),本地识别 + 系统离线翻译,中文大字主字幕、原文小字对照,贴在视频下方;一句讲完定稿再停留读完才换下一句,字号可调;看 YouTube 外文视频、网课、外语会议直接出中文字幕。
 - **离线模型管理**:设置里一键下载 / 取消 / 删除 Qwen3-ASR 权重(断点续下),查看并下载字幕翻译用的系统语言包。
-- **AI 润色(可选)**:去口头语、修标点,默认智谱 GLM,可换任意 OpenAI 兼容接口或本机模型服务。
-- **系统麦克风**:经 BlackHole 虚拟声卡,会议、录音软件都能直接选它。
-- **桌面工作台**:480×480 AMOLED 触摸屏显示时钟、Mac 负载、通知卡片。
-- **iPhone App**:看设备在线与静音状态、远程静音、发送卡片,录音按天分组回放。
-- **手机当麦克风**:没有设备也能用,iPhone 经 PushToTalk 采集(锁屏可用)、经加密蓝牙传给 Mac,沿用 Mac 讲话键。
+
+**录音与网盘备份**
+
+- **按住讲话的录音**:登录百度网盘后,每段录音连同写入的文字自动备份到 `/apps/拾见/录音`;先存本机,上传成功才删,失败会补传。
+- **AI 字幕的录音**:面板打开「备份到网盘」后,字幕听到的声音和转写原文按段备份到 `/apps/拾见/录音/视频字幕`(目前默认关,见 [ROADMAP.md](ROADMAP.md))。
+- **iPhone 回放与 AI 总结**:录音按天分组回放,当天的文字用你自己的 AI 接口整理成工作总结,待办可加入提醒事项。
+
+**设备与实验功能**
+
+- **桌面屏**:480×480 AMOLED 触摸屏显示时钟、Mac 负载、通知卡片;Mac App 内一键安装固件。
+- **iPhone 远程管理设备**:看设备在线与静音状态、远程静音、发送卡片、切换 Wi-Fi。
+- **实验功能**:豆包输入法模式、只留本人声音、训练集标注;Zhi.AI 工作台依赖作者运营的官方服务(见[云端与桌面工作台](#云端与桌面工作台)),自行构建的副本用不了。
 - **可测试**:BLE 协议纯逻辑单测、固件 host 测试、本机控制接口自带端到端压测。
 
 ## 欢迎参与
@@ -320,7 +353,7 @@ Codex(桌面 App 的输入框或终端里的 CLI)不需要额外插件:用 macOS
 - **字幕翻译语言包**:列出每个原文语言 → 目标语言,显示已安装 / 可下载 / 不支持;点「下载」由系统弹框确认,关掉弹框也会在后台继续下,装好后本页自动变「已安装」,字幕立即改走离线翻译。语言包由系统管,删除在 系统设置 → 通用 → 语言与地区 → 翻译语言。
 
 限制:字幕比声音晚约 1–2 秒;按住讲话转文字时字幕会晚一拍(两者串行用同一个模型);画中画、多显示器全屏未专门适配。
-设计与选型(为什么不用豆包输入法、BlackHole、Whisper)见 [docs/requirements/desk-live-caption-2026-11-12](docs/requirements/desk-live-caption-2026-11-12/README.md)。
+设计与选型(为什么不用豆包输入法、BlackHole、Whisper)见 [docs/archive/requirements/desk-live-caption-2026-11-12](docs/archive/requirements/desk-live-caption-2026-11-12/README.md)。
 
 ## 压测结论与性能账本(2026-11-01)
 
@@ -567,13 +600,9 @@ iPhone「Yaha 桌面」2026-11-07 起不再靠蓝牙看状态：设备每次 `de
 | 视频字幕只有原文、没有译文 | 设备设置 →「离线模型」下载对应语言包,或在「AI 润色」里填 API Key;日志会提示缺哪个语言对 |
 | 声音卡顿 | 靠近 Mac、避开金属遮挡;控制接口 `status` 看 `rssi` 与 `droppedFrames`,`stress 60` 复现 |
 
-## 产品演进:从无线麦克风到个人智能中枢
+## 路线图
 
-- **当前可用**:ESP32 无线麦克风、Fn 对讲、硬件静音、Yaha Desk 菜单栏控制、
-  BlackHole 系统输入、蓝牙自动重连、PCM 诊断与可重复压力测试。
-- **再往后(智能能力)**:在稳定音频入口上增加本地语音指令、设备联动与个人任务
-  自动化;按需增加 24 kHz 音质档(BLE 2M PHY 余量足够)和其它麦克风板子。
-- **安全基础**:智能中枢的设备权限、日志与语音数据默认留在本机。
+产品定位(语音输入 + AI 字幕,录音备份到网盘)、功能分层、迭代阶段与 iOS 上架计划见 [ROADMAP.md](ROADMAP.md)。
 
 ## 许可证
 

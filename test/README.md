@@ -12,4 +12,4 @@
 
 | 目录 | 问题 | 结论 |
 | --- | --- | --- |
-| [phone-mic-ptt](phone-mic-ptt/README.md) | 手机锁屏后能否经 BLE 讲话键用 PushToTalk 开始采集 | 可以,两条路线锁屏每轮都出首包,首包约 950 ms;见[需求](../docs/requirements/desk-phone-mic-2026-11-11/README.md) |
+| [phone-mic-ptt](phone-mic-ptt/README.md) | 手机锁屏后能否经 BLE 讲话键用 PushToTalk 开始采集 | 可以,两条路线锁屏每轮都出首包,首包约 950 ms;见[需求](../docs/archive/requirements/desk-phone-mic-2026-11-11/README.md) |

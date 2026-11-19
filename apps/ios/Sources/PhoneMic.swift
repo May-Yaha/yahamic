@@ -5,7 +5,7 @@ import DeskShared
 import PushToTalk
 import UIKit
 
-// 手机当麦克风(需求见 docs/requirements/desk-phone-mic-2026-11-11,可行性见 test/phone-mic-ptt):
+// 手机当麦克风(需求见 docs/archive/requirements/desk-phone-mic-2026-11-11,可行性见 test/phone-mic-ptt):
 // 手机扮成 yahadesk 外设(Wire.phoneService 下 info/audio/status/control,格式同固件),Mac 讲话键写 control,
 // 手机经 PushToTalk 开始发送、采集 16 kHz 单声道,每 60 ms 一帧 Opus 32 kbps,按固件同样的分片 notify 回 Mac。
 // PushToTalk 让锁屏后讲话键仍能开始采集;加入频道只能在前台由用户点。
