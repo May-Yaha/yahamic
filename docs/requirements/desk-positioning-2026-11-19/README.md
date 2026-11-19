@@ -24,8 +24,13 @@
 - iOS 首页默认声源、`PrivacyInfo.xcprivacy`、推送权限等上架准备,留在 ROADMAP「iOS 上架」。
 - 字幕备份会录下会议里对方的声音。默认开是用户 11-19 的决定,开关与说明都在面板上。
 
+## 版本
+
+三端版本号升到 0.5.5(`make-app.sh`、`firmware/CMakeLists.txt`、`apps/ios/project.yml` 与 `Info.plist`)。固件只重新构建供 Mac App 内置,没有烧录;没有发 GitHub Release。
+
 ## 验证
 
-- Mac:`swift build`、`swift test`(83 + 30 项)通过;`make-app.sh --install --dmg` 已装机并产出 `YahaDesk-0.5.4.dmg`。
-- iOS:`xcodegen generate` 后 `xcodebuild build-for-testing`(App 与测试)编译通过。本机没有可用的模拟器运行时,YahaDuo 未连接,测试没有跑,也没有装到真机。
+- Mac:`swift build`、`swift test`(83 + 30 项)通过;`make-app.sh --install --dmg` 已装机。
+- iOS:`xcodegen generate` 后 `xcodebuild build-for-testing`(App 与测试)编译通过。本机没有可用的模拟器运行时,iPhone 未连接,测试没有跑,也没有装到真机。
+- 0.5.5:固件 `idf.py build` 通过(`esp_app_desc.version` 为 0.5.5),Mac `swift test` 通过并装机、产出 `YahaDesk-0.5.5.dmg`,iOS 编译通过。
 - 待真机确认:新装(或没动过开关)且已登录网盘时,打开视频字幕后「备份到网盘」是开的,网盘 `录音/视频字幕` 下出现文件;没装豆包输入法的 Mac 上「转文字」只有「关 / 本地」。
